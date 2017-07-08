@@ -24,7 +24,8 @@ import (
 )
 
 var (
-	log = prettylog.New("main")
+	Name = "cloudmount"
+	log  = prettylog.New("main")
 )
 
 func main() {
@@ -34,7 +35,7 @@ func main() {
 
 	prettylog.Global()
 	// getClient
-	fmt.Printf("gdrivemount-%s\n\n", Version)
+	fmt.Printf("%s-%s\n\n", Name, Version)
 
 	flag.StringVar(&clouddrive, "t", "gdrive", "which cloud service to use [gdrive]")
 	flag.BoolVar(&daemonize, "d", false, "Run app in background")
