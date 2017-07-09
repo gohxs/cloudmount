@@ -16,7 +16,7 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-func (d *GDriveDriver) getClient(ctx context.Context, config *oauth2.Config) *http.Client {
+func (d *GDriveFS) getClient(ctx context.Context, config *oauth2.Config) *http.Client {
 	cacheFile, err := d.tokenCacheFile()
 	if err != nil {
 		log.Fatalf("Unable to get path to cached credential file. %v", err)
@@ -31,7 +31,7 @@ func (d *GDriveDriver) getClient(ctx context.Context, config *oauth2.Config) *ht
 
 }
 
-func (d *GDriveDriver) tokenCacheFile() (string, error) {
+func (d *GDriveFS) tokenCacheFile() (string, error) {
 	tokenCacheDir := d.core.Config.HomeDir
 
 	err := os.MkdirAll(tokenCacheDir, 0700)
@@ -40,7 +40,7 @@ func (d *GDriveDriver) tokenCacheFile() (string, error) {
 
 }
 
-func (d *GDriveDriver) getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
+func (d *GDriveFS) getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
 
 	fmt.Printf(
@@ -64,7 +64,7 @@ type the authorization code: `, authURL)
 	return tok
 }
 
-func (d *GDriveDriver) tokenFromFile(file string) (*oauth2.Token, error) {
+func (d *GDriveFS) tokenFromFile(file string) (*oauth2.Token, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (d *GDriveDriver) tokenFromFile(file string) (*oauth2.Token, error) {
 	return t, err
 }
 
-func (d *GDriveDriver) saveToken(file string, token *oauth2.Token) {
+func (d *GDriveFS) saveToken(file string, token *oauth2.Token) {
 	log.Printf("Saving credential file to: %s\n", file)
 	f, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
@@ -97,11 +97,12 @@ func (d *GDriveDriver) saveToken(file string, token *oauth2.Token) {
 	return configDir, nil
 }*/
 
-func (d *GDriveDriver) GetDriveService() *drive.Service {
+// Init driveService
+func (d *GDriveFS) initClient() {
 
 	configPath := d.core.Config.HomeDir
 
-	ctx := context.Background()
+	ctx := context.Background() // Context from GDriveFS
 
 	b, err := ioutil.ReadFile(filepath.Join(configPath, "client_secret.json"))
 	if err != nil {
@@ -114,11 +115,9 @@ func (d *GDriveDriver) GetDriveService() *drive.Service {
 	}
 
 	client := d.getClient(ctx, config)
-	srv, err := drive.New(client)
+	d.client, err = drive.New(client)
 	if err != nil {
 		log.Fatalf("Unable to retrieve drive Client: %v", err)
 	}
-
-	return srv
 
 }

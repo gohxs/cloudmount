@@ -17,7 +17,7 @@ import (
 //FileEntry entry to handle files
 type FileEntry struct {
 	//parent *FileEntry
-	fs    *FuseHandler
+	fs    *GDriveFS
 	GFile *drive.File // GDrive file
 	isDir bool        // Is dir
 	Name  string      // local name
@@ -70,8 +70,8 @@ func (fe *FileEntry) SetGFile(f *drive.File) {
 	attr.Size = uint64(f.Size)
 	//attr.Size = uint64(f.QuotaBytesUsed)
 	// Temp
-	attr.Uid = fe.core.Config.UID
-	attr.Gid = fe.core.Config.GID
+	attr.Uid = fe.fs.core.Config.UID
+	attr.Gid = fe.fs.core.Config.GID
 	attr.Crtime, _ = time.Parse(time.RFC3339, f.CreatedTime)
 	attr.Ctime = attr.Crtime // Set CTime to created, although it is change inode metadata
 	attr.Mtime, _ = time.Parse(time.RFC3339, f.ModifiedTime)
@@ -97,7 +97,7 @@ func (fe *FileEntry) Sync() (err error) {
 	fe.tempFile.Seek(0, io.SeekStart)
 
 	ngFile := &drive.File{}
-	up := fe.fs.srv.Files.Update(fe.GFile.Id, ngFile)
+	up := fe.fs.client.Files.Update(fe.GFile.Id, ngFile)
 	upFile, err := up.Media(fe.tempFile).Do()
 
 	fe.SetGFile(upFile) // update local GFile entry
@@ -127,12 +127,12 @@ func (fe *FileEntry) Cache() *os.File {
 	switch fe.GFile.MimeType { // Make this somewhat optional
 	case "application/vnd.google-apps.document":
 		log.Println("Exporting as: text/markdown")
-		res, err = fe.fs.srv.Files.Export(fe.GFile.Id, "text/plain").Download()
+		res, err = fe.fs.client.Files.Export(fe.GFile.Id, "text/plain").Download()
 	case "application/vnd.google-apps.spreadsheet":
 		log.Println("Exporting as: text/csv")
-		res, err = fe.fs.srv.Files.Export(fe.GFile.Id, "text/csv").Download()
+		res, err = fe.fs.client.Files.Export(fe.GFile.Id, "text/csv").Download()
 	default:
-		res, err = fe.fs.srv.Files.Get(fe.GFile.Id).Download()
+		res, err = fe.fs.client.Files.Get(fe.GFile.Id).Download()
 	}
 
 	if err != nil {
@@ -202,7 +202,7 @@ func (fe *FileEntry) AppendGFile(f *drive.File, inode fuseops.InodeID) *FileEntr
 
 	//log.Println("Creating new file entry for name:", name, "for GFile:", f.Name)
 	// lock from find inode to fileList append
-	entry := NewFileEntry(fe.fs)
+	entry := fe.fs.NewFileEntry()
 	entry.Name = name
 	entry.SetGFile(f)
 	entry.Inode = inode

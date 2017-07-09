@@ -10,11 +10,10 @@ import (
 
 	"os/exec"
 
-	"dev.hexasoftware.com/hxs/cloudmount/cloudfs"
-
 	"dev.hexasoftware.com/hxs/prettylog"
 
-	_ "dev.hexasoftware.com/hxs/cloudmount/fs/gdrivefs"
+	"dev.hexasoftware.com/hxs/cloudmount/cloudfs"
+	"dev.hexasoftware.com/hxs/cloudmount/fs/gdrivefs"
 	//_ "github.com/icattlecoder/godaemon" // No reason
 )
 
@@ -29,29 +28,19 @@ func main() {
 	// getClient
 	fmt.Printf("%s-%s\n", Name, Version)
 
-	core := core.New()
-
+	core := cloudfs.New()
 	core.Drivers["gdrive"] = gdrivefs.New
 
-	core.Init()
-	// Register drivers here too
-	core.ParseFlags()
-
-	core.Start()
-
-	///////////////////////////////
-	// cloud drive Type
-	/////////////////
-	/*f, ok := core.Drivers[clouddriveFlag] // there can be some interaction before daemon
-	if !ok {
-		log.Fatal("FileSystem not supported")
+	err := core.Init()
+	if err != nil {
+		log.Println("Err:", err)
+		return
 	}
-	driveFS := f()*/
-
+	// Register drivers here too
 	////////////////////////////////
 	// Daemon
 	/////////////////
-	if daemonizeFlag {
+	if core.Config.Daemonize {
 		subArgs := []string{}
 		for _, arg := range os.Args[1:] {
 			if arg == "-d" { // ignore daemon flag
@@ -66,5 +55,7 @@ func main() {
 		os.Exit(0)
 		return
 	}
+
+	core.Mount()
 
 }

@@ -1,7 +1,8 @@
-package core
+package cloudfs
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -20,19 +21,12 @@ import (
 	"github.com/jacobsa/fuse/fuseutil"
 )
 
+// Core struct
 type Core struct {
 	Config  Config
 	Drivers map[string]DriverFactory
-}
 
-type Config struct {
-	Daemonize     bool
-	CloudFSDriver string
-	VerboseLog    bool
-
-	HomeDir string
-	UID     uint32 // Mount UID
-	GID     uint32 // Mount GID
+	CurrentFS Driver
 }
 
 // New create a New cloudmount core
@@ -40,7 +34,7 @@ func New() *Core {
 	return &Core{Drivers: map[string]DriverFactory{}}
 }
 
-func (c *Core) Init() {
+func (c *Core) Init() (err error) {
 	// TODO: friendly panics
 	usr, err := user.Current()
 	if err != nil {
@@ -51,7 +45,7 @@ func (c *Core) Init() {
 	if err != nil {
 		panic(err)
 	}
-	gid, err := strconv.Atoi(usr.Uid)
+	gid, err := strconv.Atoi(usr.Gid)
 	if err != nil {
 		panic(gid)
 	}
@@ -64,16 +58,28 @@ func (c *Core) Init() {
 		VerboseLog: false,
 		Daemonize:  false,
 	}
+	err = c.parseFlags()
+	if err != nil {
+		return err
+	}
 
+	fsFactory, ok := c.Drivers[c.Config.CloudFSDriver]
+	if !ok {
+		log.Fatal("CloudFS not supported")
+	}
+
+	c.CurrentFS = fsFactory(c) // Factory
+
+	return
 }
 
-func (c *Core) ParseFlags() {
+func (c *Core) parseFlags() (err error) {
 	var mountoptsFlag string
 
 	flag.StringVar(&c.Config.CloudFSDriver, "t", "gdrive", "which cloud service to use [gdrive]")
 	flag.BoolVar(&c.Config.Daemonize, "d", false, "Run app in background")
 	flag.BoolVar(&c.Config.VerboseLog, "v", false, "Verbose log")
-	flag.StringVar(&c.Config.HomeDir, "h", c.Config.HomeDir, "Path that holds configurations")
+	flag.StringVar(&c.Config.HomeDir, "w", c.Config.HomeDir, "Work dir, path that holds configurations")
 
 	flag.StringVar(&mountoptsFlag, "o", "", "-o [opts]  uid,gid")
 
@@ -88,7 +94,7 @@ func (c *Core) ParseFlags() {
 	if len(flag.Args()) < 1 {
 		flag.Usage()
 		//fmt.Println("Usage:\n gdrivemount [-d] [-v] MOUNTPOINT")
-		return
+		return errors.New("Missing parameter")
 	}
 	/////////////////////////////////////
 	// Parse mount opts
@@ -114,23 +120,27 @@ func (c *Core) ParseFlags() {
 		}
 		c.Config.UID = uint32(uid)
 	}
+
+	gidStr, ok := mountopts["gid"]
+	if ok {
+		gid, err := strconv.Atoi(gidStr)
+		if err != nil {
+			panic(err)
+		}
+		c.Config.GID = uint32(gid)
+	}
+	return
 }
 
-func (c *Core) Start() {
-
-	cloudfs, ok := c.Drivers[c.Config.CloudFSDriver]
-	if !ok {
-		log.Fatal("CloudFS not supported")
-	}
-	driveFS := cloudfs() // Constructor?
+func (c *Core) Mount() {
 
 	// Start driveFS somehow
-
+	c.CurrentFS.Start()
 	//////////////
 	// Server
 	/////////
 	ctx := context.Background()
-	server := fuseutil.NewFileSystemServer(driveFS)
+	server := fuseutil.NewFileSystemServer(c.CurrentFS)
 	mountPath := flag.Arg(0)
 
 	var err error
@@ -154,7 +164,7 @@ func (c *Core) Start() {
 			switch sig {
 			case syscall.SIGUSR1:
 				log.Println("Manually Refresh drive")
-				go driveFS.Refresh()
+				go c.CurrentFS.Refresh()
 			case syscall.SIGHUP:
 				log.Println("GC")
 				mem := runtime.MemStats{}
