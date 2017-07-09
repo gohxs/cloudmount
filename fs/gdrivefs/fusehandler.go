@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"dev.hexasoftware.com/hxs/cloudmount/core"
+	"dev.hexasoftware.com/hxs/cloudmount/cloudfs"
 	"dev.hexasoftware.com/hxs/prettylog"
 
 	"golang.org/x/net/context"
@@ -20,10 +20,6 @@ import (
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
 )
-
-func init() {
-	core.Drivers["gdrive"] = NewGDriveFS
-}
 
 var (
 	log = prettylog.New("gdrivemount")
@@ -42,8 +38,8 @@ type fileHandle struct {
 	file *FileEntry
 }*/
 
-// GDriveFS handler
-type GDriveFS struct {
+// FuseHndler handler
+type FuseHandler struct {
 	fuseutil.NotImplementedFileSystem // Defaults
 	srv                               *drive.Service
 
@@ -57,16 +53,10 @@ type GDriveFS struct {
 	// Map IDS with FileEntries
 }
 
-func NewGDriveFS() core.Driver {
+func NewFuseHandler() *FuseHandler {
 
-	osuser, err := user.Current()
-	if err != nil {
-		log.Fatalf("Unable to fetch current user:", err)
-	}
-
-	fs := &GDriveFS{}
-	fs.osuser = osuser
-	fs.srv = GetDriveService()
+	fs := &FuseHandler{}
+	fs.srv = GetDriveClient()
 	fs.root = &FileEntry{
 		fs: fs,
 		Attr: fuseops.InodeAttributes{
@@ -94,11 +84,20 @@ func NewGDriveFS() core.Driver {
 	return fs
 }
 
+func (fs *FuseHandler) NewFileEntry() *FileEntry {
+	return &FileEntry{
+		fs:       fs,
+		children: []*FileEntry{},
+		Attr:     fuseops.InodeAttributes{},
+	}
+
+}
+
 ////////////////////////////////////////////////////////
 // TOOLS & HELPERS
 ////////////////////////////////////////////////////////
 
-func (fs *GDriveFS) createHandle() *fileHandle {
+func (fs *FuseHandler) createHandle() *fileHandle {
 	// Lock here instead
 
 	var handle fuseops.HandleID
@@ -117,16 +116,16 @@ func (fs *GDriveFS) createHandle() *fileHandle {
 }
 
 // Cache somewhere?
-/*func (fs *GDriveFS) getUID() uint32 {
+/*func (fs *FuseHandler) getUID() uint32 {
 	uid, _ := strconv.Atoi(fs.osuser.Uid)
 	return uint32(uid)
 }
-func (fs *GDriveFS) getGID() uint32 {
+func (fs *FuseHandler) getGID() uint32 {
 	gid, _ := strconv.Atoi(fs.osuser.Gid)
 	return uint32(gid)
 }*/
 
-func (fs *GDriveFS) timedRefresh() {
+func (fs *FuseHandler) timedRefresh() {
 
 	go func() {
 		for {
@@ -140,7 +139,7 @@ func (fs *GDriveFS) timedRefresh() {
 }
 
 // Refresh service files
-func (fs *GDriveFS) Refresh() {
+func (fs *FuseHandler) Refresh() {
 	fs.nextRefresh = time.Now().Add(1 * time.Minute)
 
 	fileList := []*drive.File{}
@@ -244,7 +243,7 @@ func (fs *GDriveFS) Refresh() {
 }
 
 // OpenDir return nil error allows open dir
-func (fs *GDriveFS) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (err error) {
+func (fs *FuseHandler) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (err error) {
 
 	entry := fs.root.FindByInode(op.Inode, true)
 	if entry == nil {
@@ -259,7 +258,7 @@ func (fs *GDriveFS) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (err err
 }
 
 // ReadDir lists files into readdirop
-func (fs *GDriveFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err error) {
+func (fs *FuseHandler) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err error) {
 	fh, ok := fs.fileHandles[op.Handle]
 	if !ok {
 		log.Fatal("Handle does not exists")
@@ -303,7 +302,7 @@ func (fs *GDriveFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err err
 }
 
 // SetInodeAttributes Not sure what attributes gdrive support we just leave this blank for now
-func (fs *GDriveFS) SetInodeAttributes(ctx context.Context, op *fuseops.SetInodeAttributesOp) (err error) {
+func (fs *FuseHandler) SetInodeAttributes(ctx context.Context, op *fuseops.SetInodeAttributesOp) (err error) {
 
 	// Hack to truncate file?
 
@@ -326,7 +325,7 @@ func (fs *GDriveFS) SetInodeAttributes(ctx context.Context, op *fuseops.SetInode
 }
 
 //GetInodeAttributes return attributes
-func (fs *GDriveFS) GetInodeAttributes(ctx context.Context, op *fuseops.GetInodeAttributesOp) (err error) {
+func (fs *FuseHandler) GetInodeAttributes(ctx context.Context, op *fuseops.GetInodeAttributesOp) (err error) {
 
 	f := fs.root.FindByInode(op.Inode, true)
 	if f == nil {
@@ -339,13 +338,13 @@ func (fs *GDriveFS) GetInodeAttributes(ctx context.Context, op *fuseops.GetInode
 }
 
 // ReleaseDirHandle deletes file handle entry
-func (fs *GDriveFS) ReleaseDirHandle(ctx context.Context, op *fuseops.ReleaseDirHandleOp) (err error) {
+func (fs *FuseHandler) ReleaseDirHandle(ctx context.Context, op *fuseops.ReleaseDirHandleOp) (err error) {
 	delete(fs.fileHandles, op.Handle)
 	return
 }
 
 // LookUpInode based on Parent and Name we return a self cached inode
-func (fs *GDriveFS) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) (err error) {
+func (fs *FuseHandler) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) (err error) {
 
 	parentFile := fs.root.FindByInode(op.Parent, true) // true means transverse all
 	if parentFile == nil {
@@ -369,17 +368,17 @@ func (fs *GDriveFS) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) 
 }
 
 // StatFS basically allows StatFS to run
-/*func (fs *GDriveFS) StatFS(ctx context.Context, op *fuseops.StatFSOp) (err error) {
+/*func (fs *FuseHandler) StatFS(ctx context.Context, op *fuseops.StatFSOp) (err error) {
 	return
 }*/
 
 // ForgetInode allows to forgetInode
-func (fs *GDriveFS) ForgetInode(ctx context.Context, op *fuseops.ForgetInodeOp) (err error) {
+func (fs *FuseHandler) ForgetInode(ctx context.Context, op *fuseops.ForgetInodeOp) (err error) {
 	return
 }
 
 // GetXAttr special attributes
-func (fs *GDriveFS) GetXAttr(ctx context.Context, op *fuseops.GetXattrOp) (err error) {
+func (fs *FuseHandler) GetXAttr(ctx context.Context, op *fuseops.GetXattrOp) (err error) {
 	return
 }
 
@@ -388,7 +387,7 @@ func (fs *GDriveFS) GetXAttr(ctx context.Context, op *fuseops.GetXattrOp) (err e
 //////////////////////////////////////////////////////////////////////////
 
 // OpenFile creates a temporary handle to be handled on read or write
-func (fs *GDriveFS) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) (err error) {
+func (fs *FuseHandler) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) (err error) {
 	f := fs.root.FindByInode(op.Inode, true) // might not exists
 
 	// Generate new handle
@@ -402,7 +401,7 @@ func (fs *GDriveFS) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) (err e
 }
 
 // ReadFile  if the first time we download the google drive file into a local temporary file
-func (fs *GDriveFS) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) (err error) {
+func (fs *FuseHandler) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) (err error) {
 	lf := fs.fileHandles[op.Handle]
 
 	localFile := lf.entry.Cache()
@@ -415,7 +414,7 @@ func (fs *GDriveFS) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) (err e
 }
 
 // CreateFile creates empty file in google Drive and returns its ID and attributes, only allows file creation on 'My Drive'
-func (fs *GDriveFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err error) {
+func (fs *FuseHandler) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err error) {
 
 	parentFile := fs.root.FindByInode(op.Parent, true)
 	if parentFile == nil {
@@ -476,7 +475,7 @@ func (fs *GDriveFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (e
 
 // WriteFile as ReadFile it creates a temporary file on first read
 // Maybe the ReadFile should be called here aswell to cache current contents since we are using writeAt
-func (fs *GDriveFS) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err error) {
+func (fs *FuseHandler) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err error) {
 	lf, ok := fs.fileHandles[op.Handle]
 	if !ok {
 		return fuse.EIO
@@ -498,7 +497,7 @@ func (fs *GDriveFS) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err
 }
 
 // FlushFile just returns no error, maybe upload should be handled here
-func (fs *GDriveFS) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) (err error) {
+func (fs *FuseHandler) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) (err error) {
 	lf, ok := fs.fileHandles[op.Handle]
 	if !ok {
 		return fuse.EIO
@@ -517,7 +516,7 @@ func (fs *GDriveFS) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) (err
 }
 
 // ReleaseFileHandle closes and deletes any temporary files, upload in case if changed locally
-func (fs *GDriveFS) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFileHandleOp) (err error) {
+func (fs *FuseHandler) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFileHandleOp) (err error) {
 	lf := fs.fileHandles[op.Handle]
 
 	/*if lf.uploadOnDone {
@@ -533,7 +532,7 @@ func (fs *GDriveFS) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFi
 }
 
 // Unlink remove file and remove from local cache entry
-func (fs *GDriveFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error) {
+func (fs *FuseHandler) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error) {
 	parentEntry := fs.root.FindByInode(op.Parent, true)
 	if parentEntry == nil {
 		return fuse.ENOENT
@@ -557,7 +556,7 @@ func (fs *GDriveFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error
 }
 
 // MkDir creates a directory on a parent dir
-func (fs *GDriveFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) {
+func (fs *FuseHandler) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) {
 
 	parentFile := fs.root.FindByInode(op.Parent, true)
 	if parentFile == nil {
@@ -592,7 +591,7 @@ func (fs *GDriveFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) 
 }
 
 // RmDir fuse implementation
-func (fs *GDriveFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) {
+func (fs *FuseHandler) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) {
 
 	parentFile := fs.root.FindByInode(op.Parent, true)
 	if parentFile == nil {
@@ -617,7 +616,7 @@ func (fs *GDriveFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) 
 }
 
 // Rename fuse implementation
-func (fs *GDriveFS) Rename(ctx context.Context, op *fuseops.RenameOp) (err error) {
+func (fs *FuseHandler) Rename(ctx context.Context, op *fuseops.RenameOp) (err error) {
 	oldParentFile := fs.root.FindByInode(op.OldParent, true)
 	if oldParentFile == nil {
 		return fuse.ENOENT

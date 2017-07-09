@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"dev.hexasoftware.com/hxs/cloudmount/core"
-
 	"github.com/jacobsa/fuse/fuseops"
 	drive "google.golang.org/api/drive/v3"
 )
@@ -19,7 +17,7 @@ import (
 //FileEntry entry to handle files
 type FileEntry struct {
 	//parent *FileEntry
-	fs    *GDriveFS   // GDrive FS
+	fs    *FuseHandler
 	GFile *drive.File // GDrive file
 	isDir bool        // Is dir
 	Name  string      // local name
@@ -31,14 +29,6 @@ type FileEntry struct {
 	tempFile *os.File // Cached file
 	// childs
 	children []*FileEntry // children
-}
-
-func NewFileEntry(fs *GDriveFS) *FileEntry {
-	return &FileEntry{
-		fs:       fs,
-		children: []*FileEntry{},
-		Attr:     fuseops.InodeAttributes{},
-	}
 }
 
 func (fe *FileEntry) AddChild(child *FileEntry) {
@@ -80,8 +70,8 @@ func (fe *FileEntry) SetGFile(f *drive.File) {
 	attr.Size = uint64(f.Size)
 	//attr.Size = uint64(f.QuotaBytesUsed)
 	// Temp
-	attr.Uid = core.Config.UID
-	attr.Gid = core.Config.GID
+	attr.Uid = fe.core.Config.UID
+	attr.Gid = fe.core.Config.GID
 	attr.Crtime, _ = time.Parse(time.RFC3339, f.CreatedTime)
 	attr.Ctime = attr.Crtime // Set CTime to created, although it is change inode metadata
 	attr.Mtime, _ = time.Parse(time.RFC3339, f.ModifiedTime)
