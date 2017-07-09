@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"dev.hexasoftware.com/hxs/cloudmount/core"
+
 	"github.com/jacobsa/fuse/fuseops"
 	drive "google.golang.org/api/drive/v3"
 )
@@ -78,8 +80,8 @@ func (fe *FileEntry) SetGFile(f *drive.File) {
 	attr.Size = uint64(f.Size)
 	//attr.Size = uint64(f.QuotaBytesUsed)
 	// Temp
-	attr.Uid = fe.fs.getUID()
-	attr.Gid = fe.fs.getGID()
+	attr.Uid = core.Config.UID
+	attr.Gid = core.Config.GID
 	attr.Crtime, _ = time.Parse(time.RFC3339, f.CreatedTime)
 	attr.Ctime = attr.Crtime // Set CTime to created, although it is change inode metadata
 	attr.Mtime, _ = time.Parse(time.RFC3339, f.ModifiedTime)

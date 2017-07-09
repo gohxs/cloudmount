@@ -6,8 +6,7 @@ Linux util to Mount cloud drives
 Usage:
 ```bash
 $ go get dev.hexasoftware.com/hxs/cloudmount
-$ go install dev.hexasoftware.com/hxs/cloudmount
-$
+$ cloudmount MOUNTPOINT
 
 ```
 

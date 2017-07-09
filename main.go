@@ -1,4 +1,4 @@
-//+build linux
+// +build linux
 
 package main
 
@@ -9,17 +9,21 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"os/exec"
 	"os/signal"
 	"runtime"
 	"syscall"
 
-	"dev.hexasoftware.com/hxs/cloudmount/fs/gdrivefs"
+	"dev.hexasoftware.com/hxs/cloudmount/core"
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseutil"
 
 	"dev.hexasoftware.com/hxs/prettylog"
+
+	_ "dev.hexasoftware.com/hxs/cloudmount/fs/gdrivefs"
 	//_ "github.com/icattlecoder/godaemon" // No reason
 )
 
@@ -29,17 +33,19 @@ var (
 )
 
 func main() {
-	var daemonize bool
-	var verboselog bool
-	var clouddrive string
+	var daemonizeFlag bool
+	var verboselogFlag bool
+	var clouddriveFlag string
+	var mountoptsFlag string
 
 	prettylog.Global()
 	// getClient
 	fmt.Printf("%s-%s\n\n", Name, Version)
 
-	flag.StringVar(&clouddrive, "t", "gdrive", "which cloud service to use [gdrive]")
-	flag.BoolVar(&daemonize, "d", false, "Run app in background")
-	flag.BoolVar(&verboselog, "v", false, "Verbose log")
+	flag.StringVar(&clouddriveFlag, "t", "gdrive", "which cloud service to use [gdrive]")
+	flag.StringVar(&mountoptsFlag, "o", "", "-o [opts]  uid,gid")
+	flag.BoolVar(&daemonizeFlag, "d", false, "Run app in background")
+	flag.BoolVar(&verboselogFlag, "v", false, "Verbose log")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] MOUNTPOINT\n\n", os.Args[0])
@@ -54,11 +60,44 @@ func main() {
 		//fmt.Println("Usage:\n gdrivemount [-d] [-v] MOUNTPOINT")
 		return
 	}
+	/////////////////////////////////////
+	// Parse mount opts
+	/////////////////
+	pmountopts := strings.Split(mountoptsFlag, ",")
+	mountopts := map[string]string{}
+	for _, v := range pmountopts {
+		keypart := strings.Split(v, "=")
+		if len(keypart) != 2 {
+			continue
+		}
+		mountopts[keypart[0]] = keypart[1]
+	}
 
-	driveFS := gdrivefs.NewGDriveFS() // there can be some interaction before daemon
+	/////////////////////////////////////
+	// Use mount opts
+	///////////////
+	uidStr, ok := mountopts["uid"]
+	if ok {
+		uid, err := strconv.Atoi(uidStr)
+		if err != nil {
+			panic(err)
+		}
+		core.Config.UID = uint32(uid)
+	}
 
+	///////////////////////////////
+	// cloud drive Type
+	/////////////////
+	f, ok := core.Drivers[clouddriveFlag] // there can be some interaction before daemon
+	if !ok {
+		log.Fatal("FileSystem not supported")
+	}
+	driveFS := f()
+
+	////////////////////////////////
 	// Daemon
-	if daemonize {
+	/////////////////
+	if daemonizeFlag {
 		subArgs := []string{}
 		for _, arg := range os.Args[1:] {
 			if arg == "-d" { // ignore daemon flag
@@ -84,7 +123,7 @@ func main() {
 	var err error
 	var mfs *fuse.MountedFileSystem
 
-	if verboselog {
+	if verboselogFlag {
 		mfs, err = fuse.Mount(mountPath, server, &fuse.MountConfig{DebugLogger: prettylog.New("fuse"), ErrorLogger: prettylog.New("fuse-err")})
 	} else {
 		mfs, err = fuse.Mount(mountPath, server, &fuse.MountConfig{})

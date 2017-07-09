@@ -1,9 +1,10 @@
 package gdrivefs
 
-import "dev.hexasoftware.com/hxs/core"
+import "github.com/jacobsa/fuse/fuseutil"
 
-type Service interface {
-	core.Service
+// Driver for gdrive
+type GDriveDriver interface {
+	Fuse() fuseutil.FileSystem // Fetch the file system
 }
 
 type gdriveService struct {

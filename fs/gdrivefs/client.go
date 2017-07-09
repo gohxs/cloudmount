@@ -8,8 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/user"
 	"path/filepath"
+
+	"dev.hexasoftware.com/hxs/cloudmount/core"
 
 	drive "google.golang.org/api/drive/v3"
 
@@ -33,12 +34,10 @@ func getClient(ctx context.Context, config *oauth2.Config) *http.Client {
 }
 
 func tokenCacheFile() (string, error) {
-	tokenCacheDir, err := getConfigPath()
-	if err != nil {
-		return "", err
-	}
+	tokenCacheDir := core.Config.WorkDir
 
-	os.MkdirAll(tokenCacheDir, 0700)
+	err := os.MkdirAll(tokenCacheDir, 0700)
+
 	return filepath.Join(tokenCacheDir, url.QueryEscape("auth.json")), err
 
 }
@@ -90,7 +89,7 @@ func saveToken(file string, token *oauth2.Token) {
 	json.NewEncoder(f).Encode(token)
 }
 
-func getConfigPath() (string, error) {
+/*func getConfigPath() (string, error) {
 	usr, err := user.Current()
 	if err != nil {
 		return "", err
@@ -98,14 +97,12 @@ func getConfigPath() (string, error) {
 	configDir := filepath.Join(usr.HomeDir, ".gdrivemount")
 
 	return configDir, nil
-}
+}*/
 
 func GetDriveService() *drive.Service {
 
-	configPath, err := getConfigPath()
-	if err != nil {
-		log.Fatal("Unable to fetch config path")
-	}
+	configPath := core.Config.WorkDir
+
 	ctx := context.Background()
 
 	b, err := ioutil.ReadFile(filepath.Join(configPath, "client_secret.json"))

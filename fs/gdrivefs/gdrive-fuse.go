@@ -5,10 +5,10 @@ import (
 	"io"
 	"os"
 	"os/user"
-	"strconv"
 	"syscall"
 	"time"
 
+	"dev.hexasoftware.com/hxs/cloudmount/core"
 	"dev.hexasoftware.com/hxs/prettylog"
 
 	"golang.org/x/net/context"
@@ -20,6 +20,10 @@ import (
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
 )
+
+func init() {
+	core.Drivers["gdrive"] = NewGDriveFS
+}
 
 var (
 	log = prettylog.New("gdrivemount")
@@ -53,6 +57,43 @@ type GDriveFS struct {
 	// Map IDS with FileEntries
 }
 
+func NewGDriveFS() core.Driver {
+
+	osuser, err := user.Current()
+	if err != nil {
+		log.Fatalf("Unable to fetch current user:", err)
+	}
+
+	fs := &GDriveFS{}
+	fs.osuser = osuser
+	fs.srv = GetDriveService()
+	fs.root = &FileEntry{
+		fs: fs,
+		Attr: fuseops.InodeAttributes{
+			Mode:  os.FileMode(0755) | os.ModeDir,
+			Nlink: 1,
+			Size:  4096,
+			Uid:   core.Config.UID,
+			Gid:   core.Config.GID,
+		},
+		GFile: nil,
+		Inode: fuseops.RootInodeID,
+		Name:  "",
+		//fileMap: map[string]*FileEntry{},
+		children: []*FileEntry{},
+		isDir:    true,
+	}
+	fs.fileHandles = map[fuseops.HandleID]*fileHandle{}
+
+	// Temporary entry
+	entry := fs.root.AppendGFile(&drive.File{Id: "0", Name: "Loading..."}, 999999)
+	entry.Attr.Mode = os.FileMode(0)
+
+	fs.timedRefresh()
+
+	return fs
+}
+
 ////////////////////////////////////////////////////////
 // TOOLS & HELPERS
 ////////////////////////////////////////////////////////
@@ -75,52 +116,15 @@ func (fs *GDriveFS) createHandle() *fileHandle {
 	return fh
 }
 
-func NewGDriveFS() *GDriveFS {
-
-	osuser, err := user.Current()
-	if err != nil {
-		log.Fatalf("Unable to fetch current user:", err)
-	}
-
-	fs := &GDriveFS{}
-	fs.osuser = osuser
-	fs.srv = GetDriveService()
-	fs.root = &FileEntry{
-		fs: fs,
-		Attr: fuseops.InodeAttributes{
-			Mode:  os.FileMode(0755) | os.ModeDir,
-			Nlink: 1,
-			Size:  4096,
-			Uid:   fs.getUID(),
-			Gid:   fs.getGID(),
-		},
-		GFile: nil,
-		Inode: fuseops.RootInodeID,
-		Name:  "",
-		//fileMap: map[string]*FileEntry{},
-		children: []*FileEntry{},
-		isDir:    true,
-	}
-	fs.fileHandles = map[fuseops.HandleID]*fileHandle{}
-
-	// Temporary entry
-	entry := fs.root.AppendGFile(&drive.File{Id: "0", Name: "Loading..."}, 999999)
-	entry.Attr.Mode = os.FileMode(0)
-
-	fs.timedRefresh()
-
-	return fs
-}
-
 // Cache somewhere?
-func (fs *GDriveFS) getUID() uint32 {
+/*func (fs *GDriveFS) getUID() uint32 {
 	uid, _ := strconv.Atoi(fs.osuser.Uid)
 	return uint32(uid)
 }
 func (fs *GDriveFS) getGID() uint32 {
 	gid, _ := strconv.Atoi(fs.osuser.Gid)
 	return uint32(gid)
-}
+}*/
 
 func (fs *GDriveFS) timedRefresh() {
 
