@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	log = prettylog.New("gdrivemount")
+	log = prettylog.New("gdrivefs")
 )
 
 type Handle struct {
@@ -37,7 +37,7 @@ type Handle struct {
 type GDriveFS struct {
 	fuseutil.NotImplementedFileSystem // Defaults
 
-	core   *core.Core // Core Config instead?
+	config *core.Config //core   *core.Core // Core Config instead?
 	client *drive.Service
 	//root   *FileEntry // hiearchy reference
 	root *FileContainer
@@ -55,7 +55,7 @@ type GDriveFS struct {
 func New(core *core.Core) core.Driver {
 
 	fs := &GDriveFS{
-		core:        core,
+		config:      &core.Config,
 		fileHandles: map[fuseops.HandleID]*Handle{},
 		handleMU:    &sync.Mutex{},
 	}

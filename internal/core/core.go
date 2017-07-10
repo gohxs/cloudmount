@@ -2,9 +2,7 @@ package core
 
 import (
 	"context"
-	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -12,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"dev.hexasoftware.com/hxs/prettylog"
@@ -31,10 +28,7 @@ type Core struct {
 
 // New create a New cloudmount core
 func New() *Core {
-	return &Core{Drivers: map[string]DriverFactory{}}
-}
 
-func (c *Core) Init() (err error) {
 	// TODO: friendly panics
 	usr, err := user.Current()
 	if err != nil {
@@ -50,18 +44,21 @@ func (c *Core) Init() (err error) {
 		panic(gid)
 	}
 
-	// Defaults
-	c.Config = Config{
-		HomeDir:    filepath.Join(usr.HomeDir, ".cloudmount"),
-		UID:        uint32(uid),
-		GID:        uint32(gid),
-		VerboseLog: false,
-		Daemonize:  false,
+	return &Core{
+		Drivers: map[string]DriverFactory{},
+		Config: Config{
+			HomeDir:    filepath.Join(usr.HomeDir, ".cloudmount"),
+			UID:        uint32(uid),
+			GID:        uint32(gid),
+			VerboseLog: false,
+			Daemonize:  false,
+		},
 	}
-	err = c.parseFlags()
-	if err != nil {
-		return err
-	}
+
+}
+
+// Init to be run after configuration
+func (c *Core) Init() (err error) {
 
 	fsFactory, ok := c.Drivers[c.Config.CloudFSDriver]
 	if !ok {
@@ -70,65 +67,6 @@ func (c *Core) Init() (err error) {
 
 	c.CurrentFS = fsFactory(c) // Factory
 
-	return
-}
-
-func (c *Core) parseFlags() (err error) {
-	var mountoptsFlag string
-
-	flag.StringVar(&c.Config.CloudFSDriver, "t", "gdrive", "which cloud service to use [gdrive]")
-	flag.BoolVar(&c.Config.Daemonize, "d", false, "Run app in background")
-	flag.BoolVar(&c.Config.VerboseLog, "v", false, "Verbose log")
-	flag.StringVar(&c.Config.HomeDir, "w", c.Config.HomeDir, "Work dir, path that holds configurations")
-
-	flag.StringVar(&mountoptsFlag, "o", "", "-o [opts]  uid,gid")
-
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] MOUNTPOINT\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\n")
-	}
-	flag.Parse()
-
-	if len(flag.Args()) < 1 {
-		flag.Usage()
-		//fmt.Println("Usage:\n gdrivemount [-d] [-v] MOUNTPOINT")
-		return errors.New("Missing parameter")
-	}
-	/////////////////////////////////////
-	// Parse mount opts
-	/////////////////
-	pmountopts := strings.Split(mountoptsFlag, ",")
-	mountopts := map[string]string{}
-	for _, v := range pmountopts {
-		keypart := strings.Split(v, "=")
-		if len(keypart) != 2 {
-			continue
-		}
-		mountopts[keypart[0]] = keypart[1]
-	}
-
-	/////////////////////////////////////
-	// Use mount opts
-	///////////////
-	uidStr, ok := mountopts["uid"]
-	if ok {
-		uid, err := strconv.Atoi(uidStr)
-		if err != nil {
-			panic(err)
-		}
-		c.Config.UID = uint32(uid)
-	}
-
-	gidStr, ok := mountopts["gid"]
-	if ok {
-		gid, err := strconv.Atoi(gidStr)
-		if err != nil {
-			panic(err)
-		}
-		c.Config.GID = uint32(gid)
-	}
 	return
 }
 

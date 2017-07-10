@@ -1,3 +1,5 @@
+// Oauth2 google api for Drive api
+
 package gdrivefs
 
 import (
@@ -32,7 +34,7 @@ func (d *GDriveFS) getClient(ctx context.Context, config *oauth2.Config) *http.C
 }
 
 func (d *GDriveFS) tokenCacheFile() (string, error) {
-	tokenCacheDir := d.core.Config.HomeDir
+	tokenCacheDir := d.config.HomeDir
 
 	err := os.MkdirAll(tokenCacheDir, 0700)
 
@@ -100,7 +102,7 @@ func (d *GDriveFS) saveToken(file string, token *oauth2.Token) {
 // Init driveService
 func (d *GDriveFS) initClient() {
 
-	configPath := d.core.Config.HomeDir
+	configPath := d.config.HomeDir
 
 	ctx := context.Background() // Context from GDriveFS
 
