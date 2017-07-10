@@ -131,7 +131,9 @@ func (fs *GDriveFS) Refresh() {
 		Fields(gdFields).
 		Do()
 	if err != nil {
+		// Sometimes gdrive returns error 500 randomly
 		log.Println("GDrive ERR:", err)
+		fs.Refresh() // retry
 		return
 	}
 	fileList = append(fileList, r.Files...)
@@ -145,22 +147,12 @@ func (fs *GDriveFS) Refresh() {
 			Do()
 		if err != nil {
 			log.Println("GDrive ERR:", err)
+			fs.Refresh() // retry // Same as above
 			return
 		}
 		fileList = append(fileList, r.Files...)
 	}
 	log.Println("Total entries:", len(fileList))
-
-	// TimeSort
-	/*log.Println("Sort by time")
-	sort.Slice(fileList, func(i, j int) bool {
-		createdTimeI, _ := time.Parse(time.RFC3339, fileList[i].CreatedTime)
-		createdTimeJ, _ := time.Parse(time.RFC3339, fileList[i].CreatedTime)
-		if createdTimeI.Before(createdTimeJ) {
-			return true
-		}
-		return false
-	})*/
 
 	// Cache ID for faster retrieval, might not be necessary
 	for _, f := range fileList {

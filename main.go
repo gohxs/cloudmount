@@ -27,8 +27,9 @@ func main() {
 
 	// getClient
 	log.Printf("%s-%s\n", Name, Version)
-
 	core := core.New()
+
+	// More will be added later
 	core.Drivers["gdrive"] = gdrivefs.New
 
 	if err := parseFlags(&core.Config); err != nil {
