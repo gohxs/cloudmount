@@ -3,14 +3,36 @@ cloudmount
 
 Linux util to Mount cloud drives
 
-Usage:
+####Usage:
+```bash
+$ cloudmount -h
+
+cloudmount-0.1-5-gea7b804 - built: 2017-07-10 18:24:27 UTC
+Usage: cloudmount [options] MOUNTPOINT
+
+Options:
+  -d	Run app in background
+  -o string
+    	uid,gid ex: -o uid=1000,gid=0 
+  -r duration
+    	Timed cloud synchronization interval [if applied] (default 2m0s)
+  -t string
+    	which cloud service to use [gdrive] (default "gdrive")
+  -v	Verbose log
+  -w string
+    	Work dir, path that holds configurations (default "/home/stdio/.cloudmount")
+
+```
+
+
+#### Example:
 ```bash
 $ go get dev.hexasoftware.com/hxs/cloudmount
 $ cloudmount MOUNTPOINT
 
 ```
 
-Support for:
+#### Support for:
 * Google Drive
 
 
@@ -52,21 +74,3 @@ HUP    | Perform a GC and shows memory usage <small>Works when its not running i
 
 
 
-####TODO:
-* Assure concurrency support on inode/handle creation for gdrive
-* Improve caching to refresh and save inodes
-* Reverse package structure instead of gdrivemount/cmd/gdrivemount use this as main package and move logic to subpackage
-* Use cloudmount -t gdrive -o uid, gid  MOUNTPOINT and add Support for other cloud services
-
-
-
-
-
-
-
-
-
-
-TODO:
-* create interface for drives
-* manager to handle drivers

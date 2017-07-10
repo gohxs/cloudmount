@@ -64,15 +64,6 @@ func New(core *core.Core) core.Driver {
 	fs.root.uid = core.Config.UID
 	fs.root.gid = core.Config.GID
 
-	rootEntry := fs.root.FileEntry(fuseops.RootInodeID)
-
-	rootEntry.Attr = fuseops.InodeAttributes{
-		Mode: os.FileMode(0755) | os.ModeDir,
-		Uid:  core.Config.UID,
-		Gid:  core.Config.GID,
-	}
-	rootEntry.isDir = true
-
 	//fs.root = rootEntry
 
 	// Temporary entry
@@ -110,16 +101,6 @@ func (fs *GDriveFS) createHandle() *Handle {
 	return handle
 }
 
-// Cache somewhere?
-/*func (fs *GDriveFS) getUID() uint32 {
-	uid, _ := strconv.Atoi(fs.osuser.Uid)
-	return uint32(uid)
-}
-func (fs *GDriveFS) getGID() uint32 {
-	gid, _ := strconv.Atoi(fs.osuser.Gid)
-	return uint32(gid)
-}*/
-
 func (fs *GDriveFS) timedRefresh() {
 
 	go func() {
@@ -127,7 +108,7 @@ func (fs *GDriveFS) timedRefresh() {
 			if time.Now().After(fs.nextRefresh) {
 				fs.Refresh()
 			}
-			time.Sleep(2 * time.Minute) // 2 minutes
+			time.Sleep(fs.config.RefreshTime) // 2 minutes
 		}
 	}()
 
@@ -197,7 +178,9 @@ func (fs *GDriveFS) Refresh() {
 	// Helper func to recurse
 	// Everything loaded we add to our entries
 	// Add file and its parents priorizing it parent
+
 	var appendFile func(df *drive.File)
+
 	appendFile = func(df *drive.File) {
 		for _, pID := range df.Parents {
 			parentFile, ok := fileMap[pID]
@@ -213,18 +196,19 @@ func (fs *GDriveFS) Refresh() {
 
 		// Find existing entry
 		var inode fuseops.InodeID
-		entry := fs.root.tree.FindByGID(df.Id, true)
+		entry := fs.root.FindByGID(df.Id)
+		// Store for later add
 		if entry == nil {
-			inode = root.FileEntry().Inode // This can be a problem if next time a existing inode comes? Allocate new file entry with new Inode
+			inode = fs.root.FileEntry().Inode // Register new inode on Same Root fs
+			//inode = root.FileEntry().Inode // This can be a problem if next time a existing inode comes? Allocate new file entry with new Inode
 		} else {
-			inode = entry.Inode //
+			inode = entry.Inode // Reuse existing root fs inode
 		}
 
-		newEntry := fs.root.tree.solveAppendGFile(df, inode) // Find right parent
-		if entry != nil && entry.GFile.Name == df.Name {     // Copy name from old entry
+		newEntry := root.tree.solveAppendGFile(df, inode) // Find right parent
+		if entry != nil && entry.GFile.Name == df.Name {  // Copy name from old entry
 			newEntry.Name = entry.Name
 		}
-
 		// add File
 	}
 
@@ -233,9 +217,10 @@ func (fs *GDriveFS) Refresh() {
 	}
 
 	log.Println("Refresh done, update root")
+	fs.root = root
 	//fs.root.children = root.children
 
-	log.Println("File count:", fs.root.tree.Count())
+	log.Println("File count:", len(fs.root.fileEntries))
 }
 
 ///////////////////////////////

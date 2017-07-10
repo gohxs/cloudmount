@@ -14,12 +14,13 @@ import (
 func parseFlags(config *core.Config) (err error) {
 	var mountoptsFlag string
 
-	flag.StringVar(&config.CloudFSDriver, "t", "gdrive", "which cloud service to use [gdrive]")
+	flag.StringVar(&config.CloudFSDriver, "t", config.CloudFSDriver, "which cloud service to use [gdrive]")
 	flag.BoolVar(&config.Daemonize, "d", false, "Run app in background")
 	flag.BoolVar(&config.VerboseLog, "v", false, "Verbose log")
 	flag.StringVar(&config.HomeDir, "w", config.HomeDir, "Work dir, path that holds configurations")
+	flag.DurationVar(&config.RefreshTime, "r", config.RefreshTime, "Timed cloud synchronization interval [if applied]")
 
-	flag.StringVar(&mountoptsFlag, "o", "", "-o [opts]  uid,gid")
+	flag.StringVar(&mountoptsFlag, "o", "", "uid,gid ex: -o uid=1000,gid=0 ")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] MOUNTPOINT\n\n", os.Args[0])

@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
+	"time"
 
 	"dev.hexasoftware.com/hxs/prettylog"
 
@@ -47,11 +48,13 @@ func New() *Core {
 	return &Core{
 		Drivers: map[string]DriverFactory{},
 		Config: Config{
-			HomeDir:    filepath.Join(usr.HomeDir, ".cloudmount"),
-			UID:        uint32(uid),
-			GID:        uint32(gid),
-			VerboseLog: false,
-			Daemonize:  false,
+			Daemonize:     false,
+			CloudFSDriver: "gdrive",
+			VerboseLog:    false,
+			RefreshTime:   2 * time.Minute,
+			HomeDir:       filepath.Join(usr.HomeDir, ".cloudmount"),
+			UID:           uint32(uid),
+			GID:           uint32(gid),
 		},
 	}
 

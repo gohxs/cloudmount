@@ -54,14 +54,14 @@ func (fe *FileEntry) RemoveChild(child *FileEntry) {
 }
 
 // useful for debug to count children
-func (fe *FileEntry) Count() int {
+/*func (fe *FileEntry) Count() int {
 	count := 0
 
 	for _, c := range fe.children {
 		count += c.Count()
 	}
 	return count + len(fe.children)
-}
+}*/
 
 // SetGFile update attributes and set drive.File
 func (fe *FileEntry) SetGFile(f *drive.File) {
@@ -160,7 +160,7 @@ func (fe *FileEntry) Cache() *os.File {
 // WRONG
 func (fe *FileEntry) solveAppendGFile(f *drive.File, inode fuseops.InodeID) *FileEntry {
 
-	fil := fe.FindByGID(f.Id, true)
+	fil := fe.container.FindByGID(f.Id)
 	if fil != nil { // ignore existing ID
 		return fil
 	}
@@ -169,7 +169,7 @@ func (fe *FileEntry) solveAppendGFile(f *drive.File, inode fuseops.InodeID) *Fil
 		return fe.AppendGFile(f, inode) // = append(fs.root.fileList, entry)
 	}
 	for _, parent := range f.Parents { // hierarchy add
-		parentEntry := fe.FindByGID(parent, true)
+		parentEntry := fe.container.FindByGID(parent)
 		if parentEntry == nil {
 			log.Fatalln("Non existent parent", parent)
 		}
@@ -255,7 +255,7 @@ func (fe *FileEntry) FindByName(name string, recurse bool) *FileEntry {
 }
 
 // FindByGID find by google drive ID
-func (fe *FileEntry) FindByGID(gdriveID string, recurse bool) *FileEntry {
+/*func (fe *FileEntry) FindByGID(gdriveID string, recurse bool) *FileEntry {
 	// Recurse??
 	for _, e := range fe.children {
 		if e.GFile.Id == gdriveID {
@@ -270,4 +270,4 @@ func (fe *FileEntry) FindByGID(gdriveID string, recurse bool) *FileEntry {
 	}
 	// For each child we findByInode
 	return nil
-}
+}*/

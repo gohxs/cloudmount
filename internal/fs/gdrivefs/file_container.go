@@ -1,6 +1,7 @@
 package gdrivefs
 
 import (
+	"os"
 	"sync"
 
 	"github.com/jacobsa/fuse/fuseops"
@@ -22,12 +23,30 @@ func NewFileContainer(fs *GDriveFS) *FileContainer {
 		fs:          fs,
 		inodeMU:     &sync.Mutex{},
 	}
-	fc.tree = fc.FileEntry(fuseops.RootInodeID)
+	rootEntry := fc.FileEntry(fuseops.RootInodeID)
+
+	rootEntry.Attr = fuseops.InodeAttributes{
+		Mode: os.FileMode(0755) | os.ModeDir,
+		Uid:  fs.config.UID,
+		Gid:  fs.config.GID,
+	}
+	rootEntry.isDir = true
+	fc.tree = rootEntry
+
 	return fc
 }
 
 func (fc *FileContainer) FindByInode(inode fuseops.InodeID) *FileEntry {
 	return fc.fileEntries[inode]
+}
+
+func (fc *FileContainer) FindByGID(gid string) *FileEntry {
+	for _, v := range fc.fileEntries {
+		if v.GFile != nil && v.GFile.Id == gid {
+			return v
+		}
+	}
+	return nil
 }
 
 //Return or create inode
@@ -73,5 +92,4 @@ func (fc *FileContainer) RemoveEntry(entry *FileEntry) {
 		}
 	}
 	delete(fc.fileEntries, inode)
-
 }
