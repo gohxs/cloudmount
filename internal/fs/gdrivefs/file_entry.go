@@ -20,7 +20,6 @@ type FileEntry struct {
 	container *FileContainer
 	//fs    *GDriveFS
 	GFile *drive.File // GDrive file
-	isDir bool        // Is dir
 	Name  string      // local name
 	// fuseops
 	Inode fuseops.InodeID
@@ -252,6 +251,10 @@ func (fe *FileEntry) FindByName(name string, recurse bool) *FileEntry {
 	}
 	// For each child we findByInode
 	return nil
+}
+
+func (fe *FileEntry) IsDir() bool {
+	return fe.Attr.Mode&os.ModeDir == os.ModeDir
 }
 
 // FindByGID find by google drive ID

@@ -254,7 +254,7 @@ func (fs *GDriveFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err err
 
 		for i, v := range fh.entry.children {
 			fusetype := fuseutil.DT_File
-			if v.isDir {
+			if v.IsDir() {
 				fusetype = fuseutil.DT_Directory
 			}
 			dirEnt := fuseutil.Dirent{

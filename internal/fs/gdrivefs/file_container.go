@@ -22,15 +22,11 @@ func NewFileContainer(fs *GDriveFS) *FileContainer {
 		fileEntries: map[fuseops.InodeID]*FileEntry{},
 		fs:          fs,
 		inodeMU:     &sync.Mutex{},
+		uid:         fs.config.UID,
+		gid:         fs.config.GID,
 	}
 	rootEntry := fc.FileEntry(fuseops.RootInodeID)
-
-	rootEntry.Attr = fuseops.InodeAttributes{
-		Mode: os.FileMode(0755) | os.ModeDir,
-		Uid:  fs.config.UID,
-		Gid:  fs.config.GID,
-	}
-	rootEntry.isDir = true
+	rootEntry.Attr.Mode = os.FileMode(0755) | os.ModeDir
 	fc.tree = rootEntry
 
 	return fc
@@ -74,9 +70,11 @@ func (fc *FileContainer) FileEntry(inodeOps ...fuseops.InodeID) *FileEntry {
 	fe := &FileEntry{
 		Inode:     inode,
 		container: fc,
-		//fs:        fc.fs,
-		children: []*FileEntry{},
-		Attr:     fuseops.InodeAttributes{},
+		children:  []*FileEntry{},
+		Attr: fuseops.InodeAttributes{
+			Uid: fc.uid,
+			Gid: fc.gid,
+		},
 	}
 	fc.fileEntries[inode] = fe
 
