@@ -35,14 +35,7 @@ $ cloudmount MOUNTPOINT
 #### Support for:
 * Google Drive
 
-
-
-
-
-
-
 ### Google Drive
-07-05-2017
 
 
 Setup Google client secrets:
@@ -72,5 +65,7 @@ HUP    | Perform a GC and shows memory usage <small>Works when its not running i
 
 
 
-
+#### TODO & IDEAS:
+* Consider using github.com/codegangsta/cli
+* Use a single .json/ .yaml file for mount source: cloudmount file.json destfolder where file.json contains fs type, credentials, configurations etc
 
