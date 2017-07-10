@@ -8,16 +8,88 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
 	drive "google.golang.org/api/drive/v3"
 )
 
+type FileContainer struct {
+	fileEntries map[fuseops.InodeID]*FileEntry
+	tree        *FileEntry
+	fs          *GDriveFS
+	uid         uint32
+	gid         uint32
+
+	inodeMU *sync.Mutex
+}
+
+func NewFileContainer(fs *GDriveFS) *FileContainer {
+	fc := &FileContainer{
+		fileEntries: map[fuseops.InodeID]*FileEntry{},
+		fs:          fs,
+		inodeMU:     &sync.Mutex{},
+	}
+	fc.tree = fc.FileEntry(fuseops.RootInodeID)
+	return fc
+}
+
+func (fc *FileContainer) FindByInode(inode fuseops.InodeID) *FileEntry {
+	return fc.fileEntries[inode]
+}
+
+//Return or create inode
+func (fc *FileContainer) FileEntry(inodeOps ...fuseops.InodeID) *FileEntry {
+
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+
+	var inode fuseops.InodeID
+	if len(inodeOps) > 0 {
+		inode = inodeOps[0]
+		if fe, ok := fc.fileEntries[inode]; ok {
+			return fe
+		}
+	} else { // generate new inode
+		// Max Inode Number
+		for inode = 2; inode < 99999; inode++ {
+			_, ok := fc.fileEntries[inode]
+			if !ok {
+				break
+			}
+		}
+	}
+
+	fe := &FileEntry{
+		Inode:     inode,
+		container: fc,
+		//fs:        fc.fs,
+		children: []*FileEntry{},
+		Attr:     fuseops.InodeAttributes{},
+	}
+	fc.fileEntries[inode] = fe
+
+	return fe
+}
+
+// RemoveEntry remove file entry
+func (fc *FileContainer) RemoveEntry(entry *FileEntry) {
+	var inode fuseops.InodeID
+	for k, e := range fc.fileEntries {
+		if e == entry {
+			inode = k
+		}
+	}
+	delete(fc.fileEntries, inode)
+
+}
+
 //FileEntry entry to handle files
 type FileEntry struct {
 	//parent *FileEntry
-	fs    *GDriveFS
+	container *FileContainer
+	//fs    *GDriveFS
 	GFile *drive.File // GDrive file
 	isDir bool        // Is dir
 	Name  string      // local name
@@ -70,8 +142,8 @@ func (fe *FileEntry) SetGFile(f *drive.File) {
 	attr.Size = uint64(f.Size)
 	//attr.Size = uint64(f.QuotaBytesUsed)
 	// Temp
-	attr.Uid = fe.fs.core.Config.UID
-	attr.Gid = fe.fs.core.Config.GID
+	attr.Uid = fe.container.uid
+	attr.Gid = fe.container.gid
 	attr.Crtime, _ = time.Parse(time.RFC3339, f.CreatedTime)
 	attr.Ctime = attr.Crtime // Set CTime to created, although it is change inode metadata
 	attr.Mtime, _ = time.Parse(time.RFC3339, f.ModifiedTime)
@@ -88,16 +160,16 @@ func (fe *FileEntry) SetGFile(f *drive.File) {
 }
 
 // Sync cached , upload to gdrive
+
 func (fe *FileEntry) Sync() (err error) {
 	if fe.tempFile == nil {
 		return
 	}
-
 	fe.tempFile.Sync()
 	fe.tempFile.Seek(0, io.SeekStart)
 
 	ngFile := &drive.File{}
-	up := fe.fs.client.Files.Update(fe.GFile.Id, ngFile)
+	up := fe.container.fs.client.Files.Update(fe.GFile.Id, ngFile)
 	upFile, err := up.Media(fe.tempFile).Do()
 
 	fe.SetGFile(upFile) // update local GFile entry
@@ -127,12 +199,12 @@ func (fe *FileEntry) Cache() *os.File {
 	switch fe.GFile.MimeType { // Make this somewhat optional
 	case "application/vnd.google-apps.document":
 		log.Println("Exporting as: text/markdown")
-		res, err = fe.fs.client.Files.Export(fe.GFile.Id, "text/plain").Download()
+		res, err = fe.container.fs.client.Files.Export(fe.GFile.Id, "text/plain").Download()
 	case "application/vnd.google-apps.spreadsheet":
 		log.Println("Exporting as: text/csv")
-		res, err = fe.fs.client.Files.Export(fe.GFile.Id, "text/csv").Download()
+		res, err = fe.container.fs.client.Files.Export(fe.GFile.Id, "text/csv").Download()
 	default:
-		res, err = fe.fs.client.Files.Get(fe.GFile.Id).Download()
+		res, err = fe.container.fs.client.Files.Get(fe.GFile.Id).Download()
 	}
 
 	if err != nil {
@@ -202,10 +274,9 @@ func (fe *FileEntry) AppendGFile(f *drive.File, inode fuseops.InodeID) *FileEntr
 
 	//log.Println("Creating new file entry for name:", name, "for GFile:", f.Name)
 	// lock from find inode to fileList append
-	entry := fe.fs.NewFileEntry()
+	entry := fe.container.FileEntry(inode)
 	entry.Name = name
 	entry.SetGFile(f)
-	entry.Inode = inode
 
 	fe.AddChild(entry)
 
@@ -270,16 +341,4 @@ func (fe *FileEntry) FindByGID(gdriveID string, recurse bool) *FileEntry {
 	}
 	// For each child we findByInode
 	return nil
-}
-
-func (fe *FileEntry) FindUnusedInode() fuseops.InodeID {
-	var inode fuseops.InodeID
-	for inode = 2; inode < 99999; inode++ {
-		f := fe.FindByInode(inode, true)
-		if f == nil {
-			return inode
-		}
-	}
-	log.Println("0 Inode ODD")
-	return 0
 }

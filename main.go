@@ -2,7 +2,8 @@
 
 package main
 
-//go:generate go run cmd/genversion/main.go -package main -out version.go
+//go:generate go get dev.hexasoftware.com/hxs/genversion
+//go:generate genversion -package main -out version.go
 
 import (
 	"fmt"
@@ -14,7 +15,6 @@ import (
 
 	"dev.hexasoftware.com/hxs/cloudmount/cloudfs"
 	"dev.hexasoftware.com/hxs/cloudmount/fs/gdrivefs"
-	//_ "github.com/icattlecoder/godaemon" // No reason
 )
 
 var (
@@ -25,6 +25,7 @@ var (
 func main() {
 
 	prettylog.Global()
+
 	// getClient
 	fmt.Printf("%s-%s\n", Name, Version)
 
@@ -50,6 +51,8 @@ func main() {
 		}
 
 		cmd := exec.Command(os.Args[0], subArgs...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 		cmd.Start()
 		fmt.Println("[PID]", cmd.Process.Pid)
 		os.Exit(0)

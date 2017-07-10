@@ -134,7 +134,7 @@ func (c *Core) parseFlags() (err error) {
 
 func (c *Core) Mount() {
 
-	// Start driveFS somehow
+	// Start Selected driveFS
 	c.CurrentFS.Start()
 	//////////////
 	// Server
