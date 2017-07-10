@@ -152,7 +152,7 @@ func (c *Core) Mount() {
 		mfs, err = fuse.Mount(mountPath, server, &fuse.MountConfig{})
 	}
 	if err != nil {
-		log.Fatal("Failed mounting path", flag.Arg(0))
+		log.Fatal("Failed mounting path", flag.Arg(0), err)
 	}
 
 	// Signal handling to refresh Drives

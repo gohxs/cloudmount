@@ -51,10 +51,8 @@ func main() {
 		}
 
 		cmd := exec.Command(os.Args[0], subArgs...)
-		if core.Config.VerboseLog {
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-		}
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 		cmd.Start()
 		fmt.Println("[PID]", cmd.Process.Pid)
 		os.Exit(0)
