@@ -13,8 +13,8 @@ import (
 
 	"dev.hexasoftware.com/hxs/prettylog"
 
-	"dev.hexasoftware.com/hxs/cloudmount/cloudfs"
-	"dev.hexasoftware.com/hxs/cloudmount/fs/gdrivefs"
+	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
+	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/gdrivefs"
 )
 
 var (
@@ -29,7 +29,7 @@ func main() {
 	// getClient
 	fmt.Printf("%s-%s\n", Name, Version)
 
-	core := cloudfs.New()
+	core := core.New()
 	core.Drivers["gdrive"] = gdrivefs.New
 
 	err := core.Init()
@@ -51,8 +51,10 @@ func main() {
 		}
 
 		cmd := exec.Command(os.Args[0], subArgs...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		if core.Config.VerboseLog {
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+		}
 		cmd.Start()
 		fmt.Println("[PID]", cmd.Process.Pid)
 		os.Exit(0)
