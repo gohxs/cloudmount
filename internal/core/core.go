@@ -54,7 +54,7 @@ func New() *Core {
 			Daemonize:   false,
 			Type:        "gdrive",
 			VerboseLog:  false,
-			RefreshTime: 2 * time.Minute,
+			RefreshTime: 5 * time.Second,
 			HomeDir:     filepath.Join(usr.HomeDir, ".cloudmount"),
 			Source:      filepath.Join(usr.HomeDir, ".cloudmount", "gdrive.json"),
 			UID:         uint32(uid),
@@ -80,7 +80,7 @@ func (c *Core) Init() (err error) {
 func (c *Core) Mount() {
 
 	// Start Selected driveFS
-	c.CurrentFS.Start()
+	c.CurrentFS.Start() // Should not block
 	//////////////
 	// Server
 	/////////

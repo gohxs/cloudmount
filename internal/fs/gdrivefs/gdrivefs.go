@@ -75,11 +75,12 @@ func New(core *core.Core) core.Driver {
 	return fs
 }
 
+// Async
 func (fs *GDriveFS) Start() {
 	go func() {
-		fs.Refresh()
+		fs.Refresh() // First load
 
-		log.Println("Checking changes:")
+		// Change reader loop
 		startPageTokenRes, err := fs.client.Changes.GetStartPageToken().Do()
 		if err != nil {
 			log.Println("GDrive err", err)
@@ -93,14 +94,9 @@ func (fs *GDriveFS) Start() {
 					log.Println("Err fetching changes", err)
 					break
 				}
-				log.Println("Changes:", len(changesRes.Changes))
+				//log.Println("Changes:", len(changesRes.Changes))
 				for _, c := range changesRes.Changes {
-					if c.File != nil {
-						log.Printf("File %s changed", c.File.Name)
-						log.Println("Parents:", c.File.Parents)
-					}
 					entry := fs.root.FindByGID(c.FileId)
-					log.Println("Is entry nil?", entry)
 					if c.Removed {
 						if entry == nil {
 							continue
@@ -123,7 +119,7 @@ func (fs *GDriveFS) Start() {
 				pageToken = changesRes.NextPageToken
 			}
 
-			time.Sleep(10 * time.Second)
+			time.Sleep(fs.config.RefreshTime)
 		}
 	}()
 }
