@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"os/user"
@@ -17,6 +16,10 @@ import (
 
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseutil"
+)
+
+var (
+	log = prettylog.New("cloudmount")
 )
 
 // Core struct
@@ -48,13 +51,14 @@ func New() *Core {
 	return &Core{
 		Drivers: map[string]DriverFactory{},
 		Config: Config{
-			Daemonize:     false,
-			CloudFSDriver: "gdrive",
-			VerboseLog:    false,
-			RefreshTime:   2 * time.Minute,
-			HomeDir:       filepath.Join(usr.HomeDir, ".cloudmount"),
-			UID:           uint32(uid),
-			GID:           uint32(gid),
+			Daemonize:   false,
+			Type:        "gdrive",
+			VerboseLog:  false,
+			RefreshTime: 2 * time.Minute,
+			HomeDir:     filepath.Join(usr.HomeDir, ".cloudmount"),
+			Source:      filepath.Join(usr.HomeDir, ".cloudmount", "gdrive.json"),
+			UID:         uint32(uid),
+			GID:         uint32(gid),
 		},
 	}
 
@@ -63,7 +67,7 @@ func New() *Core {
 // Init to be run after configuration
 func (c *Core) Init() (err error) {
 
-	fsFactory, ok := c.Drivers[c.Config.CloudFSDriver]
+	fsFactory, ok := c.Drivers[c.Config.Type]
 	if !ok {
 		log.Fatal("CloudFS not supported")
 	}
@@ -82,7 +86,7 @@ func (c *Core) Mount() {
 	/////////
 	ctx := context.Background()
 	server := fuseutil.NewFileSystemServer(c.CurrentFS)
-	mountPath := flag.Arg(0)
+	mountPath := c.Config.Target
 
 	var err error
 	var mfs *fuse.MountedFileSystem

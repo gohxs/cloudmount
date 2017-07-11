@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -14,7 +15,7 @@ import (
 func parseFlags(config *core.Config) (err error) {
 	var mountoptsFlag string
 
-	flag.StringVar(&config.CloudFSDriver, "t", config.CloudFSDriver, "which cloud service to use [gdrive]")
+	flag.StringVar(&config.Type, "t", config.Type, "which cloud service to use [gdrive]")
 	flag.BoolVar(&config.Daemonize, "d", false, "Run app in background")
 	flag.BoolVar(&config.VerboseLog, "v", false, "Verbose log")
 	flag.StringVar(&config.HomeDir, "w", config.HomeDir, "Work dir, path that holds configurations")
@@ -23,17 +24,24 @@ func parseFlags(config *core.Config) (err error) {
 	flag.StringVar(&mountoptsFlag, "o", "", "uid,gid ex: -o uid=1000,gid=0 ")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] MOUNTPOINT\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <SRC/CONFIG?> MOUNTPOINT\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\n")
 	}
 	flag.Parse()
 
-	if len(flag.Args()) < 1 {
+	if flag.NArg() < 1 {
 		flag.Usage()
-		//fmt.Println("Usage:\n gdrivemount [-d] [-v] MOUNTPOINT")
+		//fmt.Println("Usage:\n gdrivemount [-d] [-v] <SRC/CONFIG> <MOUNTPOINT>")
 		return errors.New("Missing parameter")
+	}
+	if flag.NArg() == 1 {
+		config.Source = filepath.Join(config.HomeDir, config.Type+".json")
+		config.Target = flag.Arg(0)
+	} else {
+		config.Source = flag.Arg(0)
+		config.Target = flag.Arg(1)
 	}
 	/////////////////////////////////////
 	// Parse mount opts
