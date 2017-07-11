@@ -7,8 +7,11 @@ Linux util to Mount cloud drives
 ```bash
 $ cloudmount -h
 
-cloudmount-0.1-5-gea7b804 - built: 2017-07-10 18:24:27 UTC
-Usage: cloudmount [options] MOUNTPOINT
+cloudmount-0.3-3-gadf4880 - built: 2017-07-11 01:34:58 UTC
+
+Usage: cloudmount [options] [<source>] <directory>
+
+Source: can be json/yaml configuration file usually with credentials or cloud specific configuration
 
 Options:
   -d	Run app in background
@@ -20,29 +23,33 @@ Options:
     	which cloud service to use [gdrive] (default "gdrive")
   -v	Verbose log
   -w string
-    	Work dir, path that holds configurations (default "/home/stdio/.cloudmount")
-
+    	Work dir, path that holds configurations (default "<homedir>/.cloudmount")
 ```
 
 
 #### Example:
 ```bash
 $ go get dev.hexasoftware.com/hxs/cloudmount
+# will default source file to $HOME/.cloudmount/gdrive.json
 $ cloudmount MOUNTPOINT
+# or 
+$ cloudmount gdrive.json MOUNTPOINT
 
 ```
+#### Source config:
+Configuration files/source can be written in following formats:
+* json
+* yaml
 
 #### Support for:
 * Google Drive
 
-### Google Drive
 
+### Google Drive
 
 Setup Google client secrets:
 
-[https://console.developers.google.com/apis/credentials] (https://console.developers.google.com/apis/credentials)
-
-As of Google drive guidance:
+https://console.developers.google.com/apis/credentials
 
 >	Turn on the Drive API
 
@@ -51,21 +58,46 @@ As of Google drive guidance:
 >	3. At the top of the page, select the OAuth consent screen tab. Select an Email address, enter a Product name if not already set, and click the Save button.
 >	4. Select the Credentials tab, click the Create credentials button and select OAuth client ID.
 >	5. Select the application type Other, enter the name "Drive API Quickstart", and click the Create button.
->	6. Click OK to dismiss the resulting dialog.
->	7. Click the file_download (Download JSON) button to the right of the client ID.
+>	6. With the result dialog, copy clientID and client secret and create json file as shown in example (this can be retrieved any time by clicking on the api key)
 
-Copy the downloaded JSON file to home directory as:    
-__$HOME/.gdrivemount/client_secret.json__   
+sample *gdrive.json* config:    
+```json
+{
+  "client_secret": {
+   "client_id": "CLIENTID",
+   "client_secret": "CLIENTSECRET"
+  }
+}
+```
+or yaml format:
+```yaml
+client_secret:
+  client_id: CLIENTID
+  client_secret: CLIENTSECRET
+```
+
+```bash
+$ cloudmount gdrive.json $HOME/mntpoint
+```
+
+Also it's possible to create the json/yaml file in home directory as 
+__$HOME/.cloudmount/gdrive.json__
+if &lt;source&gt; parameter is ommited it will default to this file
+
+
+cloudmount gdrivefs will retrieve an oauth2 token and save in same file
+
+
 
 #### Signals
 Signal | Action                                                                                               | ex
 -------|------------------------------------------------------------------------------------------------------|-----------------
-USR1   | Refreshes directory tree from google drive                                                           | killall -USR1 gdrivemount
+USR1   | Refreshes directory tree from file system                                                            | killall -USR1 gdrivemount
 HUP    | Perform a GC and shows memory usage <small>Works when its not running in daemon mode</small>         | killall -HUP gdrivemount
 
 
 
 #### TODO & IDEAS:
 * Consider using github.com/codegangsta/cli
-* Use a single .json/ .yaml file for mount source: cloudmount file.json destfolder where file.json contains fs type, credentials, configurations etc
+* Create test suit to implement new packages
 

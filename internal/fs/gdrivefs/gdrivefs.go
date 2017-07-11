@@ -38,7 +38,7 @@ type GDriveFS struct {
 	fuseutil.NotImplementedFileSystem // Defaults
 
 	config        *core.Config //core   *core.Core // Core Config instead?
-	serviceConfig *ServiceConfig
+	serviceConfig *Config
 	client        *drive.Service
 	//root   *FileEntry // hiearchy reference
 	root *FileContainer
@@ -57,7 +57,7 @@ func New(core *core.Core) core.Driver {
 
 	fs := &GDriveFS{
 		config:        &core.Config,
-		serviceConfig: &ServiceConfig{},
+		serviceConfig: &Config{},
 		fileHandles:   map[fuseops.HandleID]*Handle{},
 		handleMU:      &sync.Mutex{},
 	}

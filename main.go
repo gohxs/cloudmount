@@ -26,7 +26,7 @@ func main() {
 	prettylog.Global()
 
 	// getClient
-	log.Printf("%s-%s\n", Name, Version)
+	fmt.Fprintf(os.Stderr, "%s-%s\n", Name, Version)
 	core := core.New()
 
 	// More will be added later

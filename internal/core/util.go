@@ -35,3 +35,30 @@ func ParseConfig(srcfile string, out interface{}) (err error) {
 	}
 	return err
 }
+
+func SaveConfig(name string, obj interface{}) (err error) {
+	var data []byte
+	if strings.HasSuffix(name, ".json") {
+		data, err = json.MarshalIndent(obj, "  ", "  ")
+		if err != nil {
+			return err
+		}
+	}
+	if strings.HasSuffix(name, ".yaml") {
+		data, err = yaml.Marshal(obj)
+		if err != nil {
+			return err
+		}
+	}
+
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		log.Fatalf("Unable to save config: %v\n", err)
+	}
+	defer f.Close()
+
+	f.Write(data)
+	f.Sync()
+
+	return err
+}

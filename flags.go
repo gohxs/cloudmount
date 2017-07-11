@@ -24,7 +24,9 @@ func parseFlags(config *core.Config) (err error) {
 	flag.StringVar(&mountoptsFlag, "o", "", "uid,gid ex: -o uid=1000,gid=0 ")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <SRC/CONFIG?> MOUNTPOINT\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] [<source>] <directory>\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Source: can be json/yaml configuration file usually with credentials or cloud specific configuration\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\n")
