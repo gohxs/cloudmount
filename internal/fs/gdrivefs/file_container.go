@@ -1,8 +1,12 @@
 package gdrivefs
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"sync"
+
+	drive "google.golang.org/api/drive/v3"
 
 	"github.com/jacobsa/fuse/fuseops"
 )
@@ -25,7 +29,7 @@ func NewFileContainer(fs *GDriveFS) *FileContainer {
 		uid:         fs.config.UID,
 		gid:         fs.config.GID,
 	}
-	rootEntry := fc.FileEntry(fuseops.RootInodeID)
+	rootEntry := fc.FileEntry(nil, fuseops.RootInodeID)
 	rootEntry.Attr.Mode = os.FileMode(0755) | os.ModeDir
 	fc.tree = rootEntry
 
@@ -45,8 +49,27 @@ func (fc *FileContainer) FindByGID(gid string) *FileEntry {
 	return nil
 }
 
-//Return or create inode
-func (fc *FileContainer) FileEntry(inodeOps ...fuseops.InodeID) *FileEntry {
+func (fc *FileContainer) LookupByGID(parentGID string, name string) *FileEntry {
+	for _, entry := range fc.fileEntries {
+		if entry.HasParentGID(parentGID) && entry.Name == name {
+			return entry
+		}
+	}
+	return nil
+}
+
+func (fc *FileContainer) ListByParentGID(parentGID string) []*FileEntry {
+	ret := []*FileEntry{}
+	for _, entry := range fc.fileEntries {
+		if entry.HasParentGID(parentGID) {
+			ret = append(ret, entry)
+		}
+	}
+	return ret
+}
+
+//Return or create inode // Pass name maybe?
+func (fc *FileContainer) FileEntry(gfile *drive.File, inodeOps ...fuseops.InodeID) *FileEntry {
 
 	fc.inodeMU.Lock()
 	defer fc.inodeMU.Unlock()
@@ -67,18 +90,52 @@ func (fc *FileContainer) FileEntry(inodeOps ...fuseops.InodeID) *FileEntry {
 		}
 	}
 
+	name := ""
+	if gfile != nil {
+		name = gfile.Name
+		count := 1
+		nameParts := strings.Split(name, ".")
+		for {
+			// We find if we have a GFile in same parent with same name
+			var entry *FileEntry
+			for _, p := range gfile.Parents {
+				entry = fc.LookupByGID(p, name)
+				if entry != nil {
+					break
+				}
+			}
+			if entry == nil { // Not found return
+				break
+			}
+			count++
+			if len(nameParts) > 1 {
+				name = fmt.Sprintf("%s(%d).%s", nameParts[0], count, strings.Join(nameParts[1:], "."))
+			} else {
+				name = fmt.Sprintf("%s(%d)", nameParts[0], count)
+			}
+			log.Printf("Conflicting name generated new '%s' as '%s'", gfile.Name, name)
+		}
+	}
+
 	fe := &FileEntry{
+		GFile:     gfile,
 		Inode:     inode,
 		container: fc,
-		children:  []*FileEntry{},
+		Name:      name,
+		//children:  []*FileEntry{},
 		Attr: fuseops.InodeAttributes{
 			Uid: fc.uid,
 			Gid: fc.gid,
 		},
 	}
+	fe.SetGFile(gfile)
 	fc.fileEntries[inode] = fe
 
 	return fe
+}
+
+func (fc *FileContainer) AddEntry(entry *FileEntry) {
+	fc.fileEntries[entry.Inode] = entry
 }
 
 // RemoveEntry remove file entry
@@ -90,4 +147,16 @@ func (fc *FileContainer) RemoveEntry(entry *FileEntry) {
 		}
 	}
 	delete(fc.fileEntries, inode)
+}
+
+func (fc *FileContainer) AddGFile(gfile *drive.File) *FileEntry {
+	entry := fc.FindByGID(gfile.Id)
+	if entry != nil {
+		return entry
+	}
+	// Create new Entry
+	entry = fc.FileEntry(gfile)
+	entry.SetGFile(gfile)
+
+	return entry
 }

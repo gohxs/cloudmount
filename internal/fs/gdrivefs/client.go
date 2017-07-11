@@ -19,7 +19,7 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 	fmt.Printf(
 		`Go to the following link in your browser: 
 ----------------------------------------------------------------------------------------------
-	%v
+%v
 ----------------------------------------------------------------------------------------------
 
 type the authorization code: `, authURL)

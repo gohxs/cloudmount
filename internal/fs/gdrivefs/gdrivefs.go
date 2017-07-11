@@ -69,14 +69,63 @@ func New(core *core.Core) core.Driver {
 	//fs.root = rootEntry
 
 	// Temporary entry
-	entry := fs.root.tree.AppendGFile(&drive.File{Id: "0", Name: "Loading..."}, 999999)
+	entry := fs.root.FileEntry(&drive.File{Id: "0", Name: "Loading..."}, 9999)
 	entry.Attr.Mode = os.FileMode(0)
 
 	return fs
 }
 
 func (fs *GDriveFS) Start() {
-	fs.timedRefresh() // start synching
+	go func() {
+		fs.Refresh()
+
+		log.Println("Checking changes:")
+		startPageTokenRes, err := fs.client.Changes.GetStartPageToken().Do()
+		if err != nil {
+			log.Println("GDrive err", err)
+		}
+		savedStartPageToken := startPageTokenRes.StartPageToken
+		for {
+			pageToken := savedStartPageToken
+			for pageToken != "" {
+				changesRes, err := fs.client.Changes.List(pageToken).Fields(googleapi.Field("newStartPageToken,nextPageToken,changes(removed,fileId,file(" + fileFields + "))")).Do()
+				if err != nil {
+					log.Println("Err fetching changes", err)
+					break
+				}
+				log.Println("Changes:", len(changesRes.Changes))
+				for _, c := range changesRes.Changes {
+					if c.File != nil {
+						log.Printf("File %s changed", c.File.Name)
+						log.Println("Parents:", c.File.Parents)
+					}
+					entry := fs.root.FindByGID(c.FileId)
+					log.Println("Is entry nil?", entry)
+					if c.Removed {
+						if entry == nil {
+							continue
+						} else {
+							fs.root.RemoveEntry(entry)
+						}
+						continue
+					}
+
+					if entry != nil {
+						entry.SetGFile(c.File)
+					} else {
+						//Create new one
+						fs.root.FileEntry(c.File) // Creating new one
+					}
+				}
+				if changesRes.NewStartPageToken != "" {
+					savedStartPageToken = changesRes.NewStartPageToken
+				}
+				pageToken = changesRes.NextPageToken
+			}
+
+			time.Sleep(10 * time.Second)
+		}
+	}()
 }
 
 ////////////////////////////////////////////////////////
@@ -103,34 +152,22 @@ func (fs *GDriveFS) createHandle() *Handle {
 	return handle
 }
 
-func (fs *GDriveFS) timedRefresh() {
+const fileFields = googleapi.Field("id, name, size,mimeType, parents,createdTime,modifiedTime")
+const gdFields = googleapi.Field("files(" + fileFields + ")")
 
-	go func() {
-		for {
-			if time.Now().After(fs.nextRefresh) {
-				fs.Refresh()
-			}
-			time.Sleep(fs.config.RefreshTime) // 2 minutes
-		}
-	}()
-
-}
-
-// Refresh service files
+// FULL Refresh service files
 func (fs *GDriveFS) Refresh() {
 	fs.nextRefresh = time.Now().Add(1 * time.Minute)
 
 	fileList := []*drive.File{}
 	fileMap := map[string]*drive.File{} // Temporary map by google drive fileID
 
-	gdFields := googleapi.Field("nextPageToken, files(id,name,size,quotaBytesUsed, mimeType,parents,createdTime,modifiedTime)")
-	log.Println("Loading file entries from gdrive")
 	r, err := fs.client.Files.List().
 		OrderBy("createdTime").
 		PageSize(1000).
 		SupportsTeamDrives(true).
 		IncludeTeamDriveItems(true).
-		Fields(gdFields).
+		Fields(googleapi.Field("nextPageToken"), gdFields).
 		Do()
 	if err != nil {
 		// Sometimes gdrive returns error 500 randomly
@@ -145,7 +182,7 @@ func (fs *GDriveFS) Refresh() {
 		r, err = fs.client.Files.List().
 			OrderBy("createdTime").
 			PageToken(r.NextPageToken).
-			Fields(gdFields).
+			Fields(googleapi.Field("nextPageToken"), gdFields).
 			Do()
 		if err != nil {
 			log.Println("GDrive ERR:", err)
@@ -168,20 +205,14 @@ func (fs *GDriveFS) Refresh() {
 
 	// Create clean fileList
 	root := NewFileContainer(fs)
-
-	// Helper func to recurse
-	// Everything loaded we add to our entries
-	// Add file and its parents priorizing it parent
-
-	var appendFile func(df *drive.File)
-
-	appendFile = func(df *drive.File) {
-		for _, pID := range df.Parents {
+	var appendFile func(gfile *drive.File)
+	appendFile = func(gfile *drive.File) {
+		for _, pID := range gfile.Parents {
 			parentFile, ok := fileMap[pID]
 			if !ok {
 				parentFile, err = fs.client.Files.Get(pID).Do()
 				if err != nil {
-					panic(err)
+					log.Println("Error fetching single file:", err)
 				}
 				fileMap[parentFile.Id] = parentFile
 			}
@@ -189,20 +220,12 @@ func (fs *GDriveFS) Refresh() {
 		}
 
 		// Find existing entry
-		var inode fuseops.InodeID
-		entry := fs.root.FindByGID(df.Id)
+		entry := fs.root.FindByGID(gfile.Id)
 		// Store for later add
 		if entry == nil {
-			inode = fs.root.FileEntry().Inode // Register new inode on Same Root fs
-			//inode = root.FileEntry().Inode // This can be a problem if next time a existing inode comes? Allocate new file entry with new Inode
-		} else {
-			inode = entry.Inode // Reuse existing root fs inode
+			entry = fs.root.FileEntry(gfile) // Add New and retrieve
 		}
-
-		newEntry := root.tree.solveAppendGFile(df, inode) // Find right parent
-		if entry != nil && entry.GFile.Name == df.Name {  // Copy name from old entry
-			newEntry.Name = entry.Name
-		}
+		root.AddEntry(entry)
 		// add File
 	}
 
@@ -214,7 +237,7 @@ func (fs *GDriveFS) Refresh() {
 	fs.root = root
 	//fs.root.children = root.children
 
-	log.Println("File count:", len(fs.root.fileEntries))
+	log.Println("File count:", len(root.fileEntries))
 }
 
 ///////////////////////////////
@@ -245,8 +268,9 @@ func (fs *GDriveFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err err
 
 	if op.Offset == 0 { // Rebuild/rewind dir list
 		fh.entries = []fuseutil.Dirent{}
+		children := fs.root.ListByParentGID(fh.entry.GID)
 
-		for i, v := range fh.entry.children {
+		for i, v := range children {
 			fusetype := fuseutil.DT_File
 			if v.IsDir() {
 				fusetype = fuseutil.DT_Directory
@@ -271,7 +295,6 @@ func (fs *GDriveFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err err
 	}
 	for i := index; i < len(fh.entries); i++ {
 		n := fuseutil.WriteDirent(op.Dst[op.BytesRead:], fh.entries[i])
-		//log.Println("Written:", n)
 		if n == 0 {
 			break
 		}
@@ -293,7 +316,7 @@ func (fs *GDriveFS) SetInodeAttributes(ctx context.Context, op *fuseops.SetInode
 		}
 		// Delete and create another on truncate 0
 		err = fs.client.Files.Delete(f.GFile.Id).Do() // XXX: Careful on this
-		createdFile, err := fs.client.Files.Create(&drive.File{Parents: f.GFile.Parents, Name: f.GFile.Name}).Do()
+		createdFile, err := fs.client.Files.Create(&drive.File{Parents: f.GFile.Parents, Name: f.GFile.Name}).Fields(fileFields).Do()
 		if err != nil {
 			return fuse.EINVAL
 		}
@@ -330,16 +353,18 @@ func (fs *GDriveFS) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) 
 		return fuse.ENOENT
 	}
 
-	now := time.Now()
-	// Transverse only local
-	f := parentFile.FindByName(op.Name, false)
-	if f == nil {
+	entry := fs.root.LookupByGID(parentFile.GID, op.Name)
+
+	if entry == nil {
 		return fuse.ENOENT
 	}
 
+	// Transverse only local
+
+	now := time.Now()
 	op.Entry = fuseops.ChildInodeEntry{
-		Attributes:           f.Attr,
-		Child:                f.Inode,
+		Attributes:           entry.Attr,
+		Child:                entry.Inode,
 		AttributesExpiration: now.Add(time.Second),
 		EntryExpiration:      now.Add(time.Second),
 	}
@@ -404,30 +429,23 @@ func (fs *GDriveFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (e
 		return syscall.EPERM
 	}
 
-	existsFile := parentFile.FindByName(op.Name, false)
+	existsFile := fs.root.LookupByGID(parentFile.GID, op.Name)
+	//existsFile := parentFile.FindByName(op.Name, false)
 	if existsFile != nil {
 		return fuse.EEXIST
 	}
 
-	newFile := &drive.File{
+	newGFile := &drive.File{
 		Parents: []string{parentFile.GFile.Id},
 		Name:    op.Name,
 	}
 
-	createdFile, err := fs.client.Files.Create(newFile).Do()
+	createdGFile, err := fs.client.Files.Create(newGFile).Fields(fileFields).Do()
 	if err != nil {
 		err = fuse.EINVAL
 		return
 	}
-
-	// Temp
-	entry := fs.root.FileEntry()
-
-	entry = parentFile.AppendGFile(createdFile, entry.Inode) // Add new created file
-	if entry == nil {
-		err = fuse.EINVAL
-		return
-	}
+	entry := fs.root.FileEntry(createdGFile) // New Entry added // Or Return same?
 
 	// Associate a temp file to a new handle
 	// Local copy
@@ -486,7 +504,6 @@ func (fs *GDriveFS) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) (err
 			return fuse.EINVAL
 		}
 	}
-
 	return
 }
 
@@ -511,7 +528,8 @@ func (fs *GDriveFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error
 		return syscall.EPERM
 	}
 
-	fileEntry := parentEntry.FindByName(op.Name, false)
+	fileEntry := fs.root.LookupByGID(parentEntry.GID, op.Name)
+	//fileEntry := parentEntry.FindByName(op.Name, false)
 	if fileEntry == nil {
 		return fuse.ENOATTR
 	}
@@ -521,7 +539,7 @@ func (fs *GDriveFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error
 	}
 
 	fs.root.RemoveEntry(fileEntry)
-	parentEntry.RemoveChild(fileEntry)
+	//parentEntry.RemoveChild(fileEntry)
 
 	return
 }
@@ -538,19 +556,19 @@ func (fs *GDriveFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) 
 	}
 
 	// Should check existent first too
-	fi, err := fs.client.Files.Create(&drive.File{
+	createdGFile, err := fs.client.Files.Create(&drive.File{
 		Parents:  []string{parentFile.GFile.Id},
 		MimeType: "application/vnd.google-apps.folder",
 		Name:     op.Name,
-	}).Do()
+	}).Fields(fileFields).Do()
 	if err != nil {
 		return fuse.ENOATTR
 	}
-	entry := fs.root.FileEntry()
-	entry = parentFile.AppendGFile(fi, entry.Inode)
-	if entry == nil {
-		return fuse.EINVAL
-	}
+	entry := fs.root.FileEntry(createdGFile)
+	//entry = parentFile.AppendGFile(fi, entry.Inode)
+	//if entry == nil {
+	//		return fuse.EINVAL
+	//	}
 
 	op.Entry = fuseops.ChildInodeEntry{
 		Attributes:           entry.Attr,
@@ -573,14 +591,16 @@ func (fs *GDriveFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) 
 		return syscall.EPERM
 	}
 
-	theFile := parentFile.FindByName(op.Name, false)
+	theFile := fs.root.LookupByGID(parentFile.GID, op.Name)
+	//theFile := parentFile.FindByName(op.Name, false)
 
 	err = fs.client.Files.Delete(theFile.GFile.Id).Do()
 	if err != nil {
 		return fuse.ENOTEMPTY
 	}
+	fs.root.RemoveEntry(theFile)
 
-	parentFile.RemoveChild(theFile)
+	//parentFile.RemoveChild(theFile)
 
 	// Remove from entry somehow
 
@@ -602,12 +622,14 @@ func (fs *GDriveFS) Rename(ctx context.Context, op *fuseops.RenameOp) (err error
 		return syscall.EPERM
 	}
 
-	oldFile := oldParentFile.FindByName(op.OldName, false)
+	//oldFile := oldParentFile.FindByName(op.OldName, false)
+	oldEntry := fs.root.LookupByGID(oldParentFile.GID, op.OldName)
 
 	// Although GDrive allows duplicate names, there is some issue with inode caching
 	// So we prevent a rename to a file with same name
-	existsFile := newParentFile.FindByName(op.NewName, false)
-	if existsFile != nil {
+	//existsFile := newParentFile.FindByName(op.NewName, false)
+	existsEntry := fs.root.LookupByGID(newParentFile.GID, op.NewName)
+	if existsEntry != nil {
 		return fuse.EEXIST
 	}
 
@@ -615,15 +637,17 @@ func (fs *GDriveFS) Rename(ctx context.Context, op *fuseops.RenameOp) (err error
 		Name: op.NewName,
 	}
 
-	updateCall := fs.client.Files.Update(oldFile.GFile.Id, ngFile)
+	updateCall := fs.client.Files.Update(oldEntry.GID, ngFile).Fields(fileFields)
 	if oldParentFile != newParentFile {
-		updateCall.RemoveParents(oldParentFile.GFile.Id)
-		updateCall.AddParents(newParentFile.GFile.Id)
+		updateCall.RemoveParents(oldParentFile.GID)
+		updateCall.AddParents(newParentFile.GID)
 	}
 	updatedFile, err := updateCall.Do()
 
-	oldParentFile.RemoveChild(oldFile)
-	newParentFile.AppendGFile(updatedFile, oldFile.Inode)
+	oldEntry.SetGFile(updatedFile)
+
+	//oldParentFile.RemoveChild(oldFile)
+	//newParentFile.AppendGFile(updatedFile, oldFile.Inode)
 
 	return
 

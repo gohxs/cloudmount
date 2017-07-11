@@ -1,13 +1,10 @@
 package gdrivefs
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
-	_ "log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
@@ -19,6 +16,7 @@ type FileEntry struct {
 	//parent *FileEntry
 	container *FileContainer
 	//fs    *GDriveFS
+	GID   string      // google driveID
 	GFile *drive.File // GDrive file
 	Name  string      // local name
 	// fuseops
@@ -28,17 +26,43 @@ type FileEntry struct {
 	// cache file
 	tempFile *os.File // Cached file
 	// childs
-	children []*FileEntry // children
+	//children []*FileEntry // children
 }
 
-func (fe *FileEntry) AddChild(child *FileEntry) {
+func (fe *FileEntry) HasParentGID(gid string) bool {
+
+	// Exceptional case
+	if fe.Inode == fuseops.RootInodeID {
+		return false
+	}
+	if gid == "" { // We are looking in root
+		if fe.GFile == nil {
+			return true
+		}
+		if len(fe.GFile.Parents) == 0 {
+			return true
+		}
+	}
+
+	if fe.GFile == nil { // Case gid is not empty and GFile is null
+		return false
+	}
+	for _, pgid := range fe.GFile.Parents {
+		if pgid == gid {
+			return true
+		}
+	}
+	return false
+}
+
+/*func (fe *FileEntry) AddChild(child *FileEntry) {
 	//child.parent = fe // is this needed at all?
 	// Solve name here?
 
 	fe.children = append(fe.children, child)
-}
+}*/
 
-func (fe *FileEntry) RemoveChild(child *FileEntry) {
+/*func (fe *FileEntry) RemoveChild(child *FileEntry) {
 	toremove := -1
 	for i, v := range fe.children {
 		if v == child {
@@ -50,7 +74,7 @@ func (fe *FileEntry) RemoveChild(child *FileEntry) {
 		return
 	}
 	fe.children = append(fe.children[:toremove], fe.children[toremove+1:]...)
-}
+}*/
 
 // useful for debug to count children
 /*func (fe *FileEntry) Count() int {
@@ -63,27 +87,31 @@ func (fe *FileEntry) RemoveChild(child *FileEntry) {
 }*/
 
 // SetGFile update attributes and set drive.File
-func (fe *FileEntry) SetGFile(f *drive.File) {
+func (fe *FileEntry) SetGFile(gfile *drive.File) {
+	if gfile == nil {
+		fe.GFile = nil
+	} else {
+		fe.GFile = gfile
+	}
+
 	// Create Attribute
 	attr := fuseops.InodeAttributes{}
 	attr.Nlink = 1
-	attr.Size = uint64(f.Size)
-	//attr.Size = uint64(f.QuotaBytesUsed)
-	// Temp
 	attr.Uid = fe.container.uid
 	attr.Gid = fe.container.gid
-	attr.Crtime, _ = time.Parse(time.RFC3339, f.CreatedTime)
-	attr.Ctime = attr.Crtime // Set CTime to created, although it is change inode metadata
-	attr.Mtime, _ = time.Parse(time.RFC3339, f.ModifiedTime)
-	attr.Atime = attr.Mtime // Set access time to modified, not sure if gdrive has access time
 
 	attr.Mode = os.FileMode(0644) // default
-
-	if f.MimeType == "application/vnd.google-apps.folder" {
-		attr.Mode = os.FileMode(0755) | os.ModeDir
+	if gfile != nil {
+		attr.Size = uint64(gfile.Size)
+		attr.Crtime, _ = time.Parse(time.RFC3339, gfile.CreatedTime)
+		attr.Ctime = attr.Crtime // Set CTime to created, although it is change inode metadata
+		attr.Mtime, _ = time.Parse(time.RFC3339, gfile.ModifiedTime)
+		attr.Atime = attr.Mtime // Set access time to modified, not sure if gdrive has access time
+		if gfile.MimeType == "application/vnd.google-apps.folder" {
+			attr.Mode = os.FileMode(0755) | os.ModeDir
+		}
+		fe.GID = gfile.Id
 	}
-
-	fe.GFile = f
 	fe.Attr = attr
 }
 
@@ -98,7 +126,7 @@ func (fe *FileEntry) Sync() (err error) {
 
 	ngFile := &drive.File{}
 	up := fe.container.fs.client.Files.Update(fe.GFile.Id, ngFile)
-	upFile, err := up.Media(fe.tempFile).Do()
+	upFile, err := up.Media(fe.tempFile).Fields(fileFields).Do()
 
 	fe.SetGFile(upFile) // update local GFile entry
 	return
@@ -155,122 +183,6 @@ func (fe *FileEntry) Cache() *os.File {
 
 }
 
-// Find the right parent?
-// WRONG
-func (fe *FileEntry) solveAppendGFile(f *drive.File, inode fuseops.InodeID) *FileEntry {
-
-	fil := fe.container.FindByGID(f.Id)
-	if fil != nil { // ignore existing ID
-		return fil
-	}
-
-	if len(f.Parents) == 0 {
-		return fe.AppendGFile(f, inode) // = append(fs.root.fileList, entry)
-	}
-	for _, parent := range f.Parents { // hierarchy add
-		parentEntry := fe.container.FindByGID(parent)
-		if parentEntry == nil {
-			log.Fatalln("Non existent parent", parent)
-		}
-		// Here
-		return parentEntry.AppendGFile(f, inode)
-	}
-	return nil
-}
-
-// Load append whatever?
-// append file to this tree
-func (fe *FileEntry) AppendGFile(f *drive.File, inode fuseops.InodeID) *FileEntry {
-
-	name := f.Name
-	count := 1
-	nameParts := strings.Split(f.Name, ".")
-	for {
-		en := fe.FindByName(name, false) // locally only
-		if en == nil {                   // ok we want no value
-			break
-		}
-		count++
-		if len(nameParts) > 1 {
-			name = fmt.Sprintf("%s(%d).%s", nameParts[0], count, strings.Join(nameParts[1:], "."))
-		} else {
-			name = fmt.Sprintf("%s(%d)", nameParts[0], count)
-		}
-	}
-
-	// Create an entry
-
-	//log.Println("Creating new file entry for name:", name, "for GFile:", f.Name)
-	// lock from find inode to fileList append
-	entry := fe.container.FileEntry(inode)
-	entry.Name = name
-	entry.SetGFile(f)
-
-	fe.AddChild(entry)
-
-	//fe.fileList = append(fe.fileList, entry)
-	//fe.fileMap[f.Name] = entry
-
-	return entry
-}
-
-//FindByInode find by Inode or return self
-func (fe *FileEntry) FindByInode(inode fuseops.InodeID, recurse bool) *FileEntry {
-	if inode == fe.Inode {
-		return fe // return self
-	}
-	// Recurse??
-	for _, e := range fe.children {
-		if e.Inode == inode {
-			return e
-		}
-		if recurse {
-			re := e.FindByInode(inode, recurse)
-			if re != nil {
-				return re
-			}
-		}
-	}
-	// For each child we findByInode
-	return nil
-}
-
-// FindByName return a child entry by name
-func (fe *FileEntry) FindByName(name string, recurse bool) *FileEntry {
-	// Recurse??
-	for _, e := range fe.children {
-		if e.Name == name {
-			return e
-		}
-		if recurse {
-			re := e.FindByName(name, recurse)
-			if re != nil {
-				return re
-			}
-		}
-	}
-	// For each child we findByInode
-	return nil
-}
-
 func (fe *FileEntry) IsDir() bool {
 	return fe.Attr.Mode&os.ModeDir == os.ModeDir
 }
-
-// FindByGID find by google drive ID
-/*func (fe *FileEntry) FindByGID(gdriveID string, recurse bool) *FileEntry {
-	// Recurse??
-	for _, e := range fe.children {
-		if e.GFile.Id == gdriveID {
-			return e
-		}
-		if recurse {
-			re := e.FindByGID(gdriveID, recurse)
-			if re != nil {
-				return re
-			}
-		}
-	}
-	// For each child we findByInode
-	return nil
-}*/
