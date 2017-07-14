@@ -38,16 +38,16 @@ type the authorization code: `, authURL)
 }
 
 // Init driveService
-func (d *GDriveFS) initClient() {
+func (fs *GDriveFS) initClient() *drive.Service {
 
 	//configPath := d.config.HomeDir
 
 	ctx := context.Background() // Context from GDriveFS
 
 	log.Println("Initializing gdrive service")
-	log.Println("Source config:", d.config.Source)
+	log.Println("Source config:", fs.Config.Source)
 
-	err := core.ParseConfig(d.config.Source, d.serviceConfig)
+	err := core.ParseConfig(fs.Config.Source, fs.serviceConfig)
 
 	//b, err := ioutil.ReadFile(d.config.Source)
 
@@ -56,8 +56,8 @@ func (d *GDriveFS) initClient() {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 	config := &oauth2.Config{
-		ClientID:     d.serviceConfig.ClientSecret.ClientID,
-		ClientSecret: d.serviceConfig.ClientSecret.ClientSecret,
+		ClientID:     fs.serviceConfig.ClientSecret.ClientID,
+		ClientSecret: fs.serviceConfig.ClientSecret.ClientSecret,
 		RedirectURL:  "urn:ietf:wg:oauth:2.0:oob", //d.serviceConfig.ClientSecret.RedirectURIs[0],
 		Scopes:       []string{drive.DriveScope},
 		Endpoint: oauth2.Endpoint{
@@ -67,10 +67,10 @@ func (d *GDriveFS) initClient() {
 	}
 	// We can deal with oauthToken here too
 
-	if d.serviceConfig.Auth == nil {
+	if fs.serviceConfig.Auth == nil {
 		tok := getTokenFromWeb(config)
-		d.serviceConfig.Auth = tok
-		core.SaveConfig(d.config.Source, d.serviceConfig)
+		fs.serviceConfig.Auth = tok
+		core.SaveConfig(fs.Config.Source, fs.serviceConfig)
 	}
 
 	/*config, err := google.ConfigFromJSON(b, drive.DriveScope)
@@ -78,10 +78,14 @@ func (d *GDriveFS) initClient() {
 		log.Fatalf("Unable to parse client secret file: %v", err)
 	}*/
 
-	client := config.Client(ctx, d.serviceConfig.Auth)
-	d.client, err = drive.New(client)
+	client := config.Client(ctx, fs.serviceConfig.Auth)
+	service, err := drive.New(client)
 	if err != nil {
 		log.Fatalf("Unable to retrieve drive Client: %v", err)
 	}
+
+	//d.client = service
+
+	return service
 
 }

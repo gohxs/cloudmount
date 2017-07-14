@@ -27,7 +27,7 @@ type Core struct {
 	Config  Config
 	Drivers map[string]DriverFactory
 
-	CurrentFS Driver
+	CurrentFS DriverFS
 }
 
 // New create a New cloudmount core
@@ -107,9 +107,9 @@ func (c *Core) Mount() {
 		for sig := range sigs {
 			log.Println("Signal:", sig)
 			switch sig {
-			case syscall.SIGUSR1:
-				log.Println("Manually Refresh drive")
-				go c.CurrentFS.Refresh()
+			//case syscall.SIGUSR1:
+			//log.Println("Manually Refresh drive")
+			//go c.CurrentFS.Refresh()
 			case syscall.SIGHUP:
 				log.Println("GC")
 				mem := runtime.MemStats{}

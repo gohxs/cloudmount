@@ -100,4 +100,12 @@ HUP    | Perform a GC and shows memory usage <small>Works when its not running i
 #### TODO & IDEAS:
 * Consider using github.com/codegangsta/cli
 * Create test suit to implement new packages
+* GDrive: long term caching, maintain most used files locally until flush/change
+* File_container can be common for all FS?
+* Define what should be common per FS and create an interface for implementations
 
+
+#### Plan:
+
+Create a common structure for driver
+// Driver needs populate list somehow

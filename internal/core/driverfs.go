@@ -3,11 +3,11 @@ package core
 import "github.com/jacobsa/fuse/fuseutil"
 
 // Base Driver
-type Driver interface {
+type DriverFS interface {
 	fuseutil.FileSystem
 	//Init()
 	Start()
-	Refresh()
+	//Refresh()
 }
 
-type DriverFactory func(*Core) Driver
+type DriverFactory func(*Core) DriverFS

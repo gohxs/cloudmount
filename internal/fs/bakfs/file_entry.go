@@ -1,4 +1,4 @@
-package gdrivefs
+package basefs
 
 import (
 	"io"
@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 	drive "google.golang.org/api/drive/v3"
 )
@@ -14,10 +15,9 @@ import (
 //FileEntry entry to handle files
 type FileEntry struct {
 	//parent *FileEntry
-	container *FileContainer
-	//fs    *GDriveFS
+	fs    *BaseFS
 	GID   string      // google driveID
-	GFile *drive.File // GDrive file
+	GFile *drive.File // GDrive file // Interface maybe?
 	Name  string      // local name
 	// fuseops
 	Inode fuseops.InodeID
@@ -29,6 +29,7 @@ type FileEntry struct {
 	//children []*FileEntry // children
 }
 
+// Why?
 func (fe *FileEntry) HasParentGID(gid string) bool {
 
 	// Exceptional case
@@ -55,50 +56,20 @@ func (fe *FileEntry) HasParentGID(gid string) bool {
 	return false
 }
 
-/*func (fe *FileEntry) AddChild(child *FileEntry) {
-	//child.parent = fe // is this needed at all?
-	// Solve name here?
-
-	fe.children = append(fe.children, child)
-}*/
-
-/*func (fe *FileEntry) RemoveChild(child *FileEntry) {
-	toremove := -1
-	for i, v := range fe.children {
-		if v == child {
-			toremove = i
-			break
-		}
-	}
-	if toremove == -1 {
-		return
-	}
-	fe.children = append(fe.children[:toremove], fe.children[toremove+1:]...)
-}*/
-
-// useful for debug to count children
-/*func (fe *FileEntry) Count() int {
-	count := 0
-
-	for _, c := range fe.children {
-		count += c.Count()
-	}
-	return count + len(fe.children)
-}*/
-
 // SetGFile update attributes and set drive.File
-func (fe *FileEntry) SetGFile(gfile *drive.File) {
+func (fe *FileEntry) SetGFile(gfile *drive.File) { // Should remove from here maybe?
 	if gfile == nil {
 		fe.GFile = nil
 	} else {
 		fe.GFile = gfile
 	}
 
+	// GetAttribute from GFile somehow
 	// Create Attribute
 	attr := fuseops.InodeAttributes{}
 	attr.Nlink = 1
-	attr.Uid = fe.container.uid
-	attr.Gid = fe.container.gid
+	attr.Uid = fe.fs.Config.UID
+	attr.Gid = fe.fs.Config.GID
 
 	attr.Mode = os.FileMode(0644) // default
 	if gfile != nil {
@@ -125,7 +96,7 @@ func (fe *FileEntry) Sync() (err error) {
 	fe.tempFile.Seek(0, io.SeekStart)
 
 	ngFile := &drive.File{}
-	up := fe.container.fs.client.Files.Update(fe.GFile.Id, ngFile)
+	up := fe.fs.Client.Files.Update(fe.GFile.Id, ngFile)
 	upFile, err := up.Media(fe.tempFile).Fields(fileFields).Do()
 
 	fe.SetGFile(upFile) // update local GFile entry
@@ -152,19 +123,18 @@ func (fe *FileEntry) Cache() *os.File {
 	var res *http.Response
 	var err error
 	// Export GDocs (Special google doc documents needs to be exported make a config somewhere for this)
-	switch fe.GFile.MimeType { // Make this somewhat optional
+	switch fe.GFile.MimeType { // Make this somewhat optional special case
 	case "application/vnd.google-apps.document":
 		log.Println("Exporting as: text/markdown")
-		res, err = fe.container.fs.client.Files.Export(fe.GFile.Id, "text/plain").Download()
+		res, err = fe.fs.Client.Files.Export(fe.GFile.Id, "text/plain").Download()
 	case "application/vnd.google-apps.spreadsheet":
 		log.Println("Exporting as: text/csv")
-		res, err = fe.container.fs.client.Files.Export(fe.GFile.Id, "text/csv").Download()
+		res, err = fe.fs.Client.Files.Export(fe.GFile.Id, "text/csv").Download()
 	default:
-		res, err = fe.container.fs.client.Files.Get(fe.GFile.Id).Download()
+		res, err = fe.fs.Client.Files.Get(fe.GFile.Id).Download()
 	}
 
 	if err != nil {
-		log.Println("MimeType:", fe.GFile.MimeType)
 		log.Println("Error from GDrive API", err)
 		return nil
 	}
@@ -183,6 +153,19 @@ func (fe *FileEntry) Cache() *os.File {
 
 }
 
+func (fe *FileEntry) Truncate() (err error) { // DriverTruncate
+	// Delete and create another on truncate 0
+	err = fe.fs.Client.Files.Delete(fe.GFile.Id).Do() // XXX: Careful on this
+	createdFile, err := fe.fs.Client.Files.Create(&drive.File{Parents: fe.GFile.Parents, Name: fe.GFile.Name}).Fields(fileFields).Do()
+	if err != nil {
+		return fuse.EINVAL // ??
+	}
+	fe.SetGFile(createdFile) // Set new file
+
+	return
+}
+
+// IsDir returns true if entry is a directory:w
 func (fe *FileEntry) IsDir() bool {
 	return fe.Attr.Mode&os.ModeDir == os.ModeDir
 }

@@ -31,6 +31,7 @@ func main() {
 
 	// More will be added later
 	core.Drivers["gdrive"] = gdrivefs.New
+	//core.Drivers["dummy"] = basefs.New
 
 	if err := parseFlags(&core.Config); err != nil {
 		log.Fatalln(err)
@@ -41,7 +42,7 @@ func main() {
 		log.Println("Err:", err)
 		return
 	}
-	// Register drivers here too
+
 	////////////////////////////////
 	// Daemon
 	/////////////////
