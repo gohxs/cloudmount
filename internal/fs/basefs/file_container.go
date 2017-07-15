@@ -4,18 +4,17 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"strings"
 	"sync"
-
-	drive "google.golang.org/api/drive/v3"
 
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 )
 
 type FileContainer struct {
-	fileEntries map[fuseops.InodeID]*FileEntry
+	FileEntries map[fuseops.InodeID]*FileEntry
 	///	tree        *FileEntry
 	fs *BaseFS
 	//client *drive.Service // Wrong should be common
@@ -27,92 +26,75 @@ type FileContainer struct {
 
 func NewFileContainer(fs *BaseFS) *FileContainer {
 	fc := &FileContainer{
-		fileEntries: map[fuseops.InodeID]*FileEntry{},
+		FileEntries: map[fuseops.InodeID]*FileEntry{},
 		fs:          fs,
 		//client:  fs.Client,
 		inodeMU: &sync.Mutex{},
 		uid:     fs.Config.UID,
 		gid:     fs.Config.GID,
 	}
-	_, rootEntry := fc.FileEntry(nil, fuseops.RootInodeID)
+	rootEntry := fc.FileEntry(nil, fuseops.RootInodeID)
 	rootEntry.Attr.Mode = os.FileMode(0755) | os.ModeDir
 
 	return fc
 }
 
 func (fc *FileContainer) Count() int {
-	return len(fc.fileEntries)
+	return len(fc.FileEntries)
 }
 
 func (fc *FileContainer) FindByInode(inode fuseops.InodeID) *FileEntry {
-	return fc.fileEntries[inode]
+	return fc.FileEntries[inode]
 }
-
-// GID specific functions
-func (fc *FileContainer) FindByGID(gid string) (fuseops.InodeID, *FileEntry) {
-	for inode, v := range fc.fileEntries {
-		if v.File != nil && v.File.ID() == gid {
-			return inode, v
+func (fc *FileContainer) FindByID(id string) *FileEntry {
+	for _, v := range fc.FileEntries {
+		if v.File == nil && id == "" {
+			return v
+		}
+		if v.File != nil && v.File.ID == id {
+			return v
 		}
 	}
-	return 0, nil
+	return nil
 }
 
-func (fc *FileContainer) LookupByGID(parentGID string, name string) (fuseops.InodeID, *FileEntry) {
-
-	for inode, entry := range fc.fileEntries {
-		if entry.HasParentGID(parentGID) && entry.Name == name {
-			return inode, entry
-		}
-	}
-	return 0, nil
-
-}
-func (fc *FileContainer) Lookup(parent *FileEntry, name string) (fuseops.InodeID, *FileEntry) {
-	for inode, entry := range fc.fileEntries {
+// Try not to use this
+func (fc *FileContainer) Lookup(parent *FileEntry, name string) *FileEntry {
+	for _, entry := range fc.FileEntries {
 		if entry.HasParent(parent) && entry.Name == name {
-			return inode, entry
+			return entry
 		}
 	}
-	return 0, nil
+	return nil
 }
 
-func (fc *FileContainer) ListByParent(parent *FileEntry) map[fuseops.InodeID]*FileEntry {
-	ret := map[fuseops.InodeID]*FileEntry{}
-	for inode, entry := range fc.fileEntries {
+func (fc *FileContainer) ListByParent(parent *FileEntry) []*FileEntry {
+	ret := []*FileEntry{}
+	for _, entry := range fc.FileEntries {
 		if entry.HasParent(parent) {
-			ret[inode] = entry
+			ret = append(ret, entry)
 		}
 	}
 	return ret
 
 }
 
-func (fc *FileContainer) CreateFile(parentFile *FileEntry, name string, isDir bool) (fuseops.InodeID, *FileEntry, error) {
+func (fc *FileContainer) CreateFile(parentFile *FileEntry, name string, isDir bool) (*FileEntry, error) {
 
-	newGFile := &drive.File{
-		Parents: []string{parentFile.File.ID()},
-		Name:    name,
-	}
-	if isDir {
-		newGFile.MimeType = "application/vnd.google-apps.folder"
-	}
-	// Could be transformed to CreateFile in continer
-	createdGFile, err := fc.fs.Client.Files.Create(newGFile).Fields(fileFields).Do()
+	createdFile, err := fc.fs.Service.Create(parentFile.File, name, isDir)
 	if err != nil {
-		return 0, nil, fuse.EINVAL
+		return nil, err
 	}
-	inode, entry := fc.FileEntry(createdGFile) // New Entry added // Or Return same?
+	entry := fc.FileEntry(createdFile) // New Entry added // Or Return same?
 
-	return inode, entry, nil
+	return entry, nil
 }
 
 func (fc *FileContainer) DeleteFile(entry *FileEntry) error {
-	err := fc.fs.Client.Files.Delete(entry.File.ID()).Do()
+	err := fc.fs.Service.Delete(entry.File)
 	if err != nil {
-		return fuse.EIO
+		return fuse.EINVAL
 	}
-
 	fc.RemoveEntry(entry)
 	return nil
 }
@@ -120,7 +102,7 @@ func (fc *FileContainer) DeleteFile(entry *FileEntry) error {
 //////////////
 
 //Return or create inode // Pass name maybe?
-func (fc *FileContainer) FileEntry(gfile *drive.File, inodeOps ...fuseops.InodeID) (fuseops.InodeID, *FileEntry) {
+func (fc *FileContainer) FileEntry(file *File, inodeOps ...fuseops.InodeID) *FileEntry {
 
 	fc.inodeMU.Lock()
 	defer fc.inodeMU.Unlock()
@@ -128,30 +110,31 @@ func (fc *FileContainer) FileEntry(gfile *drive.File, inodeOps ...fuseops.InodeI
 	var inode fuseops.InodeID
 	if len(inodeOps) > 0 {
 		inode = inodeOps[0]
-		if fe, ok := fc.fileEntries[inode]; ok {
-			return inode, fe
+		if fe, ok := fc.FileEntries[inode]; ok {
+			return fe
 		}
 	} else { // generate new inode
 		// Max Inode Number
-		for inode = 2; inode < 99999; inode++ {
-			_, ok := fc.fileEntries[inode]
+		for inode = 2; inode < math.MaxUint64; inode++ {
+			_, ok := fc.FileEntries[inode]
 			if !ok {
 				break
 			}
 		}
 	}
 
+	// Name solver
 	name := ""
-	if gfile != nil {
-		name = gfile.Name
+	if file != nil {
+		name = file.Name
 		count := 1
 		nameParts := strings.Split(name, ".")
 		for {
 			// We find if we have a GFile in same parent with same name
 			var entry *FileEntry
 			// Only Place requireing a GID
-			for _, p := range gfile.Parents {
-				_, entry = fc.LookupByGID(p, name)
+			for _, p := range file.Parents {
+				entry = fc.LookupByID(p, name)
 				if entry != nil {
 					break
 				}
@@ -165,39 +148,36 @@ func (fc *FileContainer) FileEntry(gfile *drive.File, inodeOps ...fuseops.InodeI
 			} else {
 				name = fmt.Sprintf("%s(%d)", nameParts[0], count)
 			}
-			log.Printf("Conflicting name generated new '%s' as '%s'", gfile.Name, name)
+			log.Printf("Conflicting name generated new '%s' as '%s'", file.Name, name)
 		}
 	}
 
 	fe := &FileEntry{
-		//Inode: inode,
-		//container: fc,
-		Name: name,
-		//children:  []*FileEntry{},
-		Attr: fuseops.InodeAttributes{
-			Uid: fc.uid,
-			Gid: fc.gid,
-		},
+		Inode: inode,
+		Name:  name,
 	}
-	fe.SetFile(&GFile{gfile}, fc.uid, fc.gid)
-	fc.fileEntries[inode] = fe
+	// Temp gfile?
+	if file != nil {
+		fe.SetFile(file, fc.uid, fc.gid)
+	}
+	fc.FileEntries[inode] = fe
 
-	return inode, fe
+	return fe
 }
 
 func (fc *FileContainer) SetEntry(inode fuseops.InodeID, entry *FileEntry) {
-	fc.fileEntries[inode] = entry
+	fc.FileEntries[inode] = entry
 }
 
 // RemoveEntry remove file entry
 func (fc *FileContainer) RemoveEntry(entry *FileEntry) {
 	var inode fuseops.InodeID
-	for k, e := range fc.fileEntries {
+	for k, e := range fc.FileEntries {
 		if e == entry {
 			inode = k
 		}
 	}
-	delete(fc.fileEntries, inode)
+	delete(fc.FileEntries, inode)
 }
 
 func (fc *FileContainer) Sync(fe *FileEntry) (err error) {
@@ -205,12 +185,13 @@ func (fc *FileContainer) Sync(fe *FileEntry) (err error) {
 		return
 	}
 	fe.tempFile.Sync()
-	fe.tempFile.Seek(0, io.SeekStart)
+	fe.tempFile.Seek(0, io.SeekStart) // Depends??, for reading?
 
 	upFile, err := fc.fs.Service.Upload(fe.tempFile, fe.File)
 	if err != nil {
-		return
+		return err
 	}
+	log.Println("Uploaded file size:", upFile.Size)
 	fe.SetFile(upFile, fc.uid, fc.gid) // update local GFile entry
 	return
 
@@ -221,41 +202,60 @@ func (fc *FileContainer) ClearCache(fe *FileEntry) (err error) {
 	if fe.tempFile == nil {
 		return
 	}
-	fe.tempFile.Close()
+	fe.tempFile.RealClose()
 	os.Remove(fe.tempFile.Name())
 	fe.tempFile = nil
 	return
 }
 
 // Cache download GDrive file to a temporary local file or return already created file
-func (fc *FileContainer) Cache(fe *FileEntry) *os.File {
+func (fc *FileContainer) Cache(fe *FileEntry) *fileWrapper {
 	if fe.tempFile != nil {
 		return fe.tempFile
 	}
 	var err error
 
 	// Local copy
-	fe.tempFile, err = ioutil.TempFile(os.TempDir(), "gdfs") // TODO: const this elsewhere
+	localFile, err := ioutil.TempFile(os.TempDir(), "gdfs") // TODO: const this elsewhere
 	if err != nil {
-		log.Println("Error creating temp file")
 		return nil
 	}
+	fe.tempFile = &fileWrapper{localFile}
+
 	err = fc.fs.Service.DownloadTo(fe.tempFile, fe.File)
-	if err != nil {
-		return nil
-	}
+	// ignore download since can be a bogus file, for certain file systems
+	//if err != nil { // Ignore this error
+	//    return nil
+	//}
 	fe.tempFile.Seek(0, io.SeekStart)
 	return fe.tempFile
 
 }
 
+// Truncate truncates localFile to 0 bytes
 func (fc *FileContainer) Truncate(fe *FileEntry) (err error) { // DriverTruncate
 	// Delete and create another on truncate 0
-	newFile, err := fc.fs.Service.Truncate(fe.File)
 
+	//   newFile, err := fc.fs.Service.Truncate(fe.File)
+	//	if err != nil {
+	//		return fuse.EINVAL
+	//	}
+	localFile, err := ioutil.TempFile(os.TempDir(), "gdfs") // TODO: const this elsewhere
 	if err != nil {
-		return fuse.EINVAL
+		return err
 	}
-	fe.SetFile(newFile, fc.uid, fc.gid) // Set new file
+	fe.tempFile = &fileWrapper{localFile}
+	//fc.Sync(fe) // Basically upload empty file
+
 	return
+}
+
+// LookupByID lookup by remote ID
+func (fc *FileContainer) LookupByID(parentID string, name string) *FileEntry {
+	for _, entry := range fc.FileEntries {
+		if entry.HasParentID(parentID) && entry.Name == name {
+			return entry
+		}
+	}
+	return nil
 }

@@ -39,7 +39,7 @@ func parseFlags(config *core.Config) (err error) {
 		return errors.New("Missing parameter")
 	}
 	if flag.NArg() == 1 {
-		config.Source = filepath.Join(config.HomeDir, config.Type+".json")
+		config.Source = filepath.Join(config.HomeDir, config.Type+".yaml")
 		config.Target = flag.Arg(0)
 	} else {
 		config.Source = flag.Arg(0)

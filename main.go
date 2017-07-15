@@ -12,6 +12,7 @@ import (
 	"os/exec"
 
 	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
+	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/dropboxfs"
 	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/gdrivefs"
 	"dev.hexasoftware.com/hxs/prettylog"
 )
@@ -31,7 +32,7 @@ func main() {
 
 	// More will be added later
 	core.Drivers["gdrive"] = gdrivefs.New
-	//core.Drivers["dummy"] = basefs.New
+	core.Drivers["dropbox"] = dropboxfs.New
 
 	if err := parseFlags(&core.Config); err != nil {
 		log.Fatalln(err)

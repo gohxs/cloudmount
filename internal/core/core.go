@@ -56,7 +56,7 @@ func New() *Core {
 			VerboseLog:  false,
 			RefreshTime: 5 * time.Second,
 			HomeDir:     filepath.Join(usr.HomeDir, ".cloudmount"),
-			Source:      filepath.Join(usr.HomeDir, ".cloudmount", "gdrive.json"),
+			Source:      filepath.Join(usr.HomeDir, ".cloudmount", "gdrive.yaml"),
 			UID:         uint32(uid),
 			GID:         uint32(gid),
 		},

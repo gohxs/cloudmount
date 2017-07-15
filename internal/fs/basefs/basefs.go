@@ -2,7 +2,9 @@
 package basefs
 
 import (
+	"errors"
 	"io"
+	"math"
 	"os"
 	"sync"
 	"syscall"
@@ -13,7 +15,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	drive "google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
 
 	"github.com/jacobsa/fuse"
@@ -21,11 +22,15 @@ import (
 	"github.com/jacobsa/fuse/fuseutil"
 )
 
+const maxInodes = math.MaxUint64
+
 var (
 	log = prettylog.New("basefs")
+	// ErrNotImplemented basic Not implemented error
+	ErrNotImplemented = errors.New("Not implemented")
 )
 
-type Handle struct {
+type handle struct {
 	ID           fuseops.HandleID
 	entry        *FileEntry
 	uploadOnDone bool
@@ -37,18 +42,11 @@ type Handle struct {
 type BaseFS struct {
 	fuseutil.NotImplementedFileSystem // Defaults
 
-	Config *core.Config //core   *core.Core // Core Config instead?
-	Root   *FileContainer
-
-	fileHandles map[fuseops.HandleID]*Handle
+	Config      *core.Config //core   *core.Core // Core Config instead?
+	Root        *FileContainer
+	fileHandles map[fuseops.HandleID]*handle
 	handleMU    *sync.Mutex
-	//serviceConfig *Config
-	Client  *drive.Service
-	Service Service
-	//root   *FileEntry // hiearchy reference
-
-	//fileMap map[string]
-	// Map IDS with FileEntries
+	Service     Service
 }
 
 // New Creates a new BaseFS with config based on core
@@ -56,17 +54,34 @@ func New(core *core.Core) *BaseFS {
 
 	fs := &BaseFS{
 		Config:      &core.Config,
-		fileHandles: map[fuseops.HandleID]*Handle{},
+		fileHandles: map[fuseops.HandleID]*handle{},
 		handleMU:    &sync.Mutex{},
 	}
+
 	fs.Root = NewFileContainer(fs)
 	fs.Root.uid = core.Config.UID
 	fs.Root.gid = core.Config.GID
 
-	_, entry := fs.Root.FileEntry(&drive.File{Id: "0", Name: "Loading..."}, 9999)
+	loadingFile := File{Name: "Loading...", ID: "0"}
+	entry := fs.Root.FileEntry(&loadingFile, maxInodes) // Last inode
 	entry.Attr.Mode = os.FileMode(0)
 
 	return fs
+}
+
+// Refresh should be renamed to Load or something
+func (fs *BaseFS) Refresh() {
+	// Try
+	files, err := fs.Service.ListAll()
+	if err == nil { // Do something repeat maybe?
+
+	}
+	root := NewFileContainer(fs)
+	for _, file := range files {
+		root.FileEntry(file) // Try to find in previous root
+	}
+	log.Println("File count:", root.Count())
+	fs.Root = root
 }
 
 ////////////////////////////////////////////////////////
@@ -74,24 +89,23 @@ func New(core *core.Core) *BaseFS {
 ////////////////////////////////////////////////////////
 
 // COMMON
-func (fs *BaseFS) createHandle() *Handle {
+func (fs *BaseFS) createHandle() *handle {
 	// Lock here instead
 	fs.handleMU.Lock()
 	defer fs.handleMU.Unlock()
 
 	var handleID fuseops.HandleID
-
-	for handleID = 1; handleID < 99999; handleID++ {
+	for handleID = 1; handleID < math.MaxUint64; handleID++ {
 		_, ok := fs.fileHandles[handleID]
 		if !ok {
 			break
 		}
 	}
 
-	handle := &Handle{ID: handleID}
-	fs.fileHandles[handleID] = handle
+	h := &handle{ID: handleID}
+	fs.fileHandles[handleID] = h
 
-	return handle
+	return h
 }
 
 // Client is still here
@@ -130,21 +144,19 @@ func (fs *BaseFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err error
 		fh.entries = []fuseutil.Dirent{}
 		children := fs.Root.ListByParent(fh.entry)
 
-		i := 0
-		for inode, v := range children {
+		for i, v := range children {
 			fusetype := fuseutil.DT_File
 			if v.IsDir() {
 				fusetype = fuseutil.DT_Directory
 			}
 			dirEnt := fuseutil.Dirent{
-				Inode:  inode,
+				Inode:  v.Inode,
 				Name:   v.Name,
 				Type:   fusetype,
 				Offset: fuseops.DirOffset(i) + 1,
 			}
 			//	written += fuseutil.WriteDirent(fh.buf[written:], dirEnt)
 			fh.entries = append(fh.entries, dirEnt)
-			i++
 		}
 	}
 
@@ -213,7 +225,7 @@ func (fs *BaseFS) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) (e
 		return fuse.ENOENT
 	}
 
-	inode, entry := fs.Root.Lookup(parentFile, op.Name)
+	entry := fs.Root.Lookup(parentFile, op.Name)
 
 	if entry == nil {
 		return fuse.ENOENT
@@ -224,7 +236,7 @@ func (fs *BaseFS) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) (e
 	now := time.Now()
 	op.Entry = fuseops.ChildInodeEntry{
 		Attributes:           entry.Attr,
-		Child:                inode,
+		Child:                entry.Inode,
 		AttributesExpiration: now.Add(time.Second),
 		EntryExpiration:      now.Add(time.Second),
 	}
@@ -290,18 +302,18 @@ func (fs *BaseFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err
 		return fuse.ENOENT
 	}
 	// Only write on child folders
-	if parentFile == fs.Root.fileEntries[fuseops.RootInodeID] {
+	if parentFile == fs.Root.FileEntries[fuseops.RootInodeID] {
 		return syscall.EPERM
 	}
 
-	_, existsFile := fs.Root.Lookup(parentFile, op.Name)
+	existsFile := fs.Root.Lookup(parentFile, op.Name)
 	//existsFile := parentFile.FindByName(op.Name, false)
 	if existsFile != nil {
 		return fuse.EEXIST
 	}
 
 	// Parent entry/Name
-	inode, entry, err := fs.Root.CreateFile(parentFile, op.Name, false)
+	entry, err := fs.Root.CreateFile(parentFile, op.Name, false)
 	if err != nil {
 		return err
 	}
@@ -315,7 +327,7 @@ func (fs *BaseFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err
 	op.Handle = handle.ID
 	op.Entry = fuseops.ChildInodeEntry{
 		Attributes:           entry.Attr,
-		Child:                inode,
+		Child:                entry.Inode,
 		AttributesExpiration: time.Now().Add(time.Minute),
 		EntryExpiration:      time.Now().Add(time.Minute),
 	}
@@ -337,7 +349,6 @@ func (fs *BaseFS) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err e
 	if localFile == nil {
 		return fuse.EINVAL
 	}
-
 	_, err = localFile.WriteAt(op.Data, op.Offset)
 	if err != nil {
 		err = fuse.EIO
@@ -390,7 +401,7 @@ func (fs *BaseFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error) 
 		return fuse.ENOENT
 	}
 
-	_, fileEntry := fs.Root.Lookup(parentEntry, op.Name)
+	fileEntry := fs.Root.Lookup(parentEntry, op.Name)
 	//fileEntry := parentEntry.FindByName(op.Name, false)
 	if fileEntry == nil {
 		return fuse.ENOATTR
@@ -409,14 +420,14 @@ func (fs *BaseFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) {
 		return fuse.ENOENT
 	}
 
-	inode, entry, err := fs.Root.CreateFile(parentFile, op.Name, true)
+	entry, err := fs.Root.CreateFile(parentFile, op.Name, true)
 	if err != nil {
 		return err
 	}
 
 	op.Entry = fuseops.ChildInodeEntry{
 		Attributes:           entry.Attr,
-		Child:                inode,
+		Child:                entry.Inode,
 		AttributesExpiration: time.Now().Add(time.Minute),
 		EntryExpiration:      time.Now().Add(time.Microsecond),
 	}
@@ -435,7 +446,7 @@ func (fs *BaseFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) {
 		return fuse.ENOENT
 	}
 
-	_, theFile := fs.Root.Lookup(parentFile, op.Name)
+	theFile := fs.Root.Lookup(parentFile, op.Name)
 
 	err = fs.Root.DeleteFile(theFile)
 	if err != nil {
@@ -460,28 +471,26 @@ func (fs *BaseFS) Rename(ctx context.Context, op *fuseops.RenameOp) (err error) 
 	}
 
 	//oldFile := oldParentFile.FindByName(op.OldName, false)
-	_, oldEntry := fs.Root.Lookup(oldParentFile, op.OldName)
+	oldEntry := fs.Root.Lookup(oldParentFile, op.OldName)
 
 	// Although GDrive allows duplicate names, there is some issue with inode caching
 	// So we prevent a rename to a file with same name
 	//existsFile := newParentFile.FindByName(op.NewName, false)
-	_, existsEntry := fs.Root.Lookup(newParentFile, op.NewName)
+	existsEntry := fs.Root.Lookup(newParentFile, op.NewName)
 	if existsEntry != nil {
 		return fuse.EEXIST
 	}
 
-	ngFile := &drive.File{
-		Name: op.NewName,
+	nFile, err := fs.Service.Move(oldEntry.File, newParentFile.File, op.NewName)
+	if err != nil {
+		return fuse.EINVAL
 	}
 
-	updateCall := fs.Client.Files.Update(oldEntry.GID, ngFile).Fields(fileFields)
-	if oldParentFile != newParentFile {
-		updateCall.RemoveParents(oldParentFile.GID)
-		updateCall.AddParents(newParentFile.GID)
-	}
-	updatedFile, err := updateCall.Do()
+	//oldEntry.SetFile(nFile, fs.Config.UID, fs.Config.GID)
 
-	oldEntry.SetFile(&GFile{updatedFile}, fs.Config.UID, fs.Config.GID)
+	// Why remove and add instead of setting file, is just in case we have an existing name FileEntry solves the name adding duplicates helpers
+	fs.Root.RemoveEntry(oldEntry)
+	fs.Root.FileEntry(nFile, oldEntry.Inode) // Use this same inode
 
 	//oldParentFile.RemoveChild(oldFile)
 	//newParentFile.AppendGFile(updatedFile, oldFile.Inode)
