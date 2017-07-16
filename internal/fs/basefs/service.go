@@ -2,7 +2,9 @@ package basefs
 
 import "io"
 
+// Service interface
 type Service interface {
+	Changes() ([]*Change, error)
 	ListAll() ([]*File, error)
 	Create(parent *File, name string, isDir bool) (*File, error)
 	//Truncate(file *File) (*File, error)

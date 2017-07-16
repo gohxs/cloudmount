@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 
 	"os/exec"
@@ -23,6 +24,15 @@ var (
 )
 
 func main() {
+	// TODO: TEMP
+	{
+		// Globally insecure SSL for debugging
+		r, _ := http.NewRequest("GET", "http://localhost", nil)
+		cli := &http.Client{}
+		cli.Do(r)
+		tr := http.DefaultTransport.(*http.Transport)
+		tr.TLSClientConfig.InsecureSkipVerify = true
+	}
 
 	prettylog.Global()
 

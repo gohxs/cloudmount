@@ -6,9 +6,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/jacobsa/fuse"
+	"golang.org/x/oauth2"
 
+	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
 	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/basefs"
+	"dev.hexasoftware.com/hxs/cloudmount/internal/oauth2util"
 
 	drive "google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
@@ -24,7 +26,44 @@ type Service struct {
 	savedStartPageToken string
 }
 
-func (s *Service) Changes() ([]*drive.Change, error) { // Return a list of New file entries
+func NewService(coreConfig *core.Config) *Service {
+
+	serviceConfig := Config{}
+	log.Println("Initializing gdrive service")
+	log.Println("Source config:", coreConfig.Source)
+
+	err := core.ParseConfig(coreConfig.Source, &serviceConfig)
+	if err != nil {
+		log.Fatalf("Unable to read <source>: %v", err)
+	}
+	config := &oauth2.Config{
+		ClientID:     serviceConfig.ClientSecret.ClientID,
+		ClientSecret: serviceConfig.ClientSecret.ClientSecret,
+		RedirectURL:  "urn:ietf:wg:oauth:2.0:oob", //d.serviceConfig.ClientSecret.RedirectURIs[0],
+		Scopes:       []string{drive.DriveScope},
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "https://accounts.google.com/o/oauth2/auth",  //d.serviceConfig.ClientSecret.AuthURI,
+			TokenURL: "https://accounts.google.com/o/oauth2/token", //d.serviceConfig.ClientSecret.TokenURI,
+		},
+	}
+	if serviceConfig.Auth == nil {
+		tok := oauth2util.GetTokenFromWeb(config)
+		serviceConfig.Auth = tok
+		core.SaveConfig(coreConfig.Source, &serviceConfig)
+	}
+
+	client := config.Client(oauth2.NoContext, serviceConfig.Auth)
+	driveCli, err := drive.New(client)
+	if err != nil {
+		log.Fatalf("Unable to retrieve drive Client: %v", err)
+	}
+
+	return &Service{client: driveCli}
+
+}
+
+//func (s *Service) Changes() ([]*drive.Change, error) { // Return a list of New file entries
+func (s *Service) Changes() ([]*basefs.Change, error) { // Return a list of New file entries
 	if s.savedStartPageToken == "" {
 		startPageTokenRes, err := s.client.Changes.GetStartPageToken().Do()
 		if err != nil {
@@ -33,7 +72,7 @@ func (s *Service) Changes() ([]*drive.Change, error) { // Return a list of New f
 		s.savedStartPageToken = startPageTokenRes.StartPageToken
 	}
 
-	ret := []*drive.Change{}
+	ret := []*basefs.Change{}
 	pageToken := s.savedStartPageToken
 	for pageToken != "" {
 		changesRes, err := s.client.Changes.List(pageToken).Fields(googleapi.Field("newStartPageToken,nextPageToken,changes(removed,fileId,file(" + fileFields + "))")).Do()
@@ -43,7 +82,8 @@ func (s *Service) Changes() ([]*drive.Change, error) { // Return a list of New f
 		}
 		//log.Println("Changes:", len(changesRes.Changes))
 		for _, c := range changesRes.Changes {
-			ret = append(ret, c) // Convert to our changes
+			change := &basefs.Change{ID: c.FileId, File: File(c.File), Remove: c.Removed}
+			ret = append(ret, change) // Convert to our changes
 		}
 		if changesRes.NewStartPageToken != "" {
 			s.savedStartPageToken = changesRes.NewStartPageToken
@@ -127,6 +167,10 @@ func (s *Service) ListAll() ([]*basefs.File, error) {
 }
 
 func (s *Service) Create(parent *basefs.File, name string, isDir bool) (*basefs.File, error) {
+	if parent == nil {
+		return nil, basefs.ErrPermission
+	}
+
 	newGFile := &drive.File{
 		Parents: []string{parent.ID},
 		Name:    name,
@@ -137,7 +181,8 @@ func (s *Service) Create(parent *basefs.File, name string, isDir bool) (*basefs.
 	// Could be transformed to CreateFile in continer
 	createdGFile, err := s.client.Files.Create(newGFile).Fields(fileFields).Do()
 	if err != nil {
-		return nil, fuse.EINVAL
+		log.Println("err", err)
+		return nil, err
 	}
 
 	return File(createdGFile), nil
@@ -172,7 +217,7 @@ func (s *Service) DownloadTo(w io.Writer, file *basefs.File) error {
 	}
 
 	if err != nil {
-		log.Println("Error from GDrive API", err)
+		log.Println("Error from GDrive API", err, "Mimetype:", gfile.MimeType)
 		return err
 	}
 	defer res.Body.Close()
@@ -182,7 +227,9 @@ func (s *Service) DownloadTo(w io.Writer, file *basefs.File) error {
 }
 
 func (s *Service) Move(file *basefs.File, newParent *basefs.File, name string) (*basefs.File, error) {
-
+	/*if newParent == nil {
+		return nil, basefs.ErrPermission
+	}*/
 	ngFile := &drive.File{
 		Name: name,
 	}
@@ -193,19 +240,17 @@ func (s *Service) Move(file *basefs.File, newParent *basefs.File, name string) (
 		for _, pgid := range file.Parents {
 			updateCall.RemoveParents(pgid) // Remove all parents??
 		}
-		updateCall.AddParents(newParent.ID)
+		if newParent != nil {
+			updateCall.AddParents(newParent.ID)
+		}
 	}
-	//	}
-	/*if oldParentFile != newParentFile {
-		updateCall.RemoveParents(oldParentFile.GID)
-		updateCall.AddParents(newParentFile.GID)
-	}*/
 	updatedFile, err := updateCall.Do()
 
 	return File(updatedFile), err
 }
 
 func (s *Service) Delete(file *basefs.File) error {
+	// PRevent removing from root?
 	err := s.client.Files.Delete(file.ID).Do()
 	if err != nil {
 		return err

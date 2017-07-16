@@ -7,13 +7,6 @@ import (
 
 // This could be a struct
 // And service would be creating these
-/*type File interface {
-	ID() string
-	Name() string
-	Attr() fuseops.InodeAttributes
-	Parents() []string
-	HasParent(file File) bool
-}*/
 type File struct {
 	ID   string
 	Name string
@@ -28,8 +21,12 @@ type File struct {
 }
 
 func (f *File) HasParent(parent *File) bool {
+	parentID := ""
+	if parent != nil {
+		parentID = parent.ID
+	}
 	for _, p := range f.Parents {
-		if p == parent.ID {
+		if p == parentID {
 			return true
 		}
 	}

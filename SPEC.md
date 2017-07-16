@@ -1,5 +1,9 @@
 
 
+
+Fuse Interface -> File container -> Service (produces File)
+
+
 Package structure
 
 

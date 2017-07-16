@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 )
 
@@ -35,6 +34,8 @@ func NewFileContainer(fs *BaseFS) *FileContainer {
 	}
 	rootEntry := fc.FileEntry(nil, fuseops.RootInodeID)
 	rootEntry.Attr.Mode = os.FileMode(0755) | os.ModeDir
+	rootEntry.Attr.Uid = fs.Config.UID
+	rootEntry.Attr.Gid = fs.Config.GID
 
 	return fc
 }
@@ -47,14 +48,18 @@ func (fc *FileContainer) FindByInode(inode fuseops.InodeID) *FileEntry {
 	return fc.FileEntries[inode]
 }
 func (fc *FileContainer) FindByID(id string) *FileEntry {
+	log.Println("Searching for :", id)
 	for _, v := range fc.FileEntries {
 		if v.File == nil && id == "" {
+			log.Println("Found cause file is nil and id '' inode:", v.Inode)
 			return v
 		}
 		if v.File != nil && v.File.ID == id {
+			log.Println("Found by id")
 			return v
 		}
 	}
+	log.Println("Not found")
 	return nil
 }
 
@@ -87,13 +92,15 @@ func (fc *FileContainer) CreateFile(parentFile *FileEntry, name string, isDir bo
 	}
 	entry := fc.FileEntry(createdFile) // New Entry added // Or Return same?
 
+	//fc.Truncate(entry) // Dropbox dont have a way to upload?
+
 	return entry, nil
 }
 
 func (fc *FileContainer) DeleteFile(entry *FileEntry) error {
 	err := fc.fs.Service.Delete(entry.File)
 	if err != nil {
-		return fuse.EINVAL
+		return err
 	}
 	fc.RemoveEntry(entry)
 	return nil
@@ -123,6 +130,9 @@ func (fc *FileContainer) FileEntry(file *File, inodeOps ...fuseops.InodeID) *Fil
 		}
 	}
 
+	/////////////////////////////////////////////////////////////
+	// Important some file systems might support insane chars
+	////////////////////////////////////
 	// Name solver
 	name := ""
 	if file != nil {
@@ -150,6 +160,14 @@ func (fc *FileContainer) FileEntry(file *File, inodeOps ...fuseops.InodeID) *Fil
 			}
 			log.Printf("Conflicting name generated new '%s' as '%s'", file.Name, name)
 		}
+	}
+	/////////////////////////////////
+	// Filename sanitizer?, There might be other unsupported char
+	////
+	if strings.Contains(name, "/") { // Something to inform user
+		newName := strings.Replace(name, "/", "_", -1)
+		log.Println("Filename contains invalid chars, sanitizing: '%s'-'%s'", name, newName)
+		name = newName
 	}
 
 	fe := &FileEntry{
@@ -235,17 +253,12 @@ func (fc *FileContainer) Cache(fe *FileEntry) *fileWrapper {
 // Truncate truncates localFile to 0 bytes
 func (fc *FileContainer) Truncate(fe *FileEntry) (err error) { // DriverTruncate
 	// Delete and create another on truncate 0
-
-	//   newFile, err := fc.fs.Service.Truncate(fe.File)
-	//	if err != nil {
-	//		return fuse.EINVAL
-	//	}
 	localFile, err := ioutil.TempFile(os.TempDir(), "gdfs") // TODO: const this elsewhere
 	if err != nil {
 		return err
 	}
 	fe.tempFile = &fileWrapper{localFile}
-	//fc.Sync(fe) // Basically upload empty file
+	//fc.Sync(fe) // Basically upload empty file??
 
 	return
 }

@@ -4,6 +4,8 @@ package basefs
 
 import "os"
 
+// osfileWrapper
+
 type fileWrapper struct {
 	*os.File
 }

@@ -57,8 +57,10 @@ func New() *Core {
 			RefreshTime: 5 * time.Second,
 			HomeDir:     filepath.Join(usr.HomeDir, ".cloudmount"),
 			Source:      filepath.Join(usr.HomeDir, ".cloudmount", "gdrive.yaml"),
-			UID:         uint32(uid),
-			GID:         uint32(gid),
+
+			Safemode: false,
+			UID:      uint32(uid),
+			GID:      uint32(gid),
 		},
 	}
 

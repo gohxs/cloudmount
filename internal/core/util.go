@@ -9,7 +9,7 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
-// Some utils
+// ParseConfig, reads yaml or json file into a struct
 func ParseConfig(srcfile string, out interface{}) (err error) {
 	if srcfile == "" {
 		return

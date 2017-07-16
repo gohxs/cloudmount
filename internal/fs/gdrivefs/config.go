@@ -8,5 +8,8 @@ type Config struct {
 		ClientSecret string `json:"client_secret" yaml:"client_secret"`
 	} `json:"client_secret" yaml:"client_secret"`
 
-	Auth *oauth2.Token `json:"auth" yaml:"auth"`
+	Auth    *oauth2.Token `json:"auth" yaml:"auth"`
+	Options struct {
+		Safemode bool
+	}
 }

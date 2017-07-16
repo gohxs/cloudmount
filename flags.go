@@ -21,7 +21,7 @@ func parseFlags(config *core.Config) (err error) {
 	flag.StringVar(&config.HomeDir, "w", config.HomeDir, "Work dir, path that holds configurations")
 	flag.DurationVar(&config.RefreshTime, "r", config.RefreshTime, "Timed cloud synchronization interval [if applied]")
 
-	flag.StringVar(&mountoptsFlag, "o", "", "uid,gid ex: -o uid=1000,gid=0 ")
+	flag.StringVar(&mountoptsFlag, "o", "", "uid,gid,safemode ex: -o uid=1000,gid=0")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "\n")
@@ -77,6 +77,9 @@ func parseFlags(config *core.Config) (err error) {
 			panic(err)
 		}
 		config.GID = uint32(gid)
+	}
+	if mountopts["safemode"] == "true" {
+		config.Safemode = true
 	}
 	return
 }

@@ -1,7 +1,8 @@
 package dropboxfs
 
 import (
-	"time"
+	"io/ioutil"
+	glog "log"
 
 	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
 	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/basefs"
@@ -9,35 +10,16 @@ import (
 )
 
 var (
-	log = prettylog.New("dropboxfs")
+	log = glog.New(ioutil.Discard, "", 0)
 )
 
-type DropboxFS struct {
-	*basefs.BaseFS
-	serviceConfig *Config
-	nextRefresh   time.Time
-}
-
+// New Create basefs with Dropbox service
 func New(core *core.Core) core.DriverFS {
-
-	fs := &DropboxFS{basefs.New(core), &Config{}, time.Now()}
-	client := fs.initClient() // Init Oauth2 client
-	//client.Verbose = true
-
-	// Set necesary service
-	fs.BaseFS.Service = &Service{client}
+	if core.Config.VerboseLog {
+		log = prettylog.New("dropboxfs")
+	}
+	fs := basefs.New(core)
+	fs.Service = NewService(&core.Config) // DropBoxService
 
 	return fs
-}
-
-func (fs *DropboxFS) Start() {
-	Service := fs.Service.(*Service)
-	// Fill root container and do changes
-	go func() {
-		fs.Refresh()
-		for {
-			Service.Changes()
-			time.Sleep(fs.Config.RefreshTime)
-		}
-	}()
 }

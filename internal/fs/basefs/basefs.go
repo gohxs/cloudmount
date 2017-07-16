@@ -4,6 +4,8 @@ package basefs
 import (
 	"errors"
 	"io"
+	"io/ioutil"
+	glog "log"
 	"math"
 	"os"
 	"sync"
@@ -25,9 +27,11 @@ import (
 const maxInodes = math.MaxUint64
 
 var (
-	log = prettylog.New("basefs")
+	log = glog.New(ioutil.Discard, "", 0)
 	// ErrNotImplemented basic Not implemented error
 	ErrNotImplemented = errors.New("Not implemented")
+	// ErrPermission permission denied error
+	ErrPermission = errors.New("Permission denied")
 )
 
 type handle struct {
@@ -51,6 +55,10 @@ type BaseFS struct {
 
 // New Creates a new BaseFS with config based on core
 func New(core *core.Core) *BaseFS {
+	if core.Config.VerboseLog {
+		log = prettylog.New("basefs")
+
+	}
 
 	fs := &BaseFS{
 		Config:      &core.Config,
@@ -69,19 +77,55 @@ func New(core *core.Core) *BaseFS {
 	return fs
 }
 
+// Start BaseFS service with loop for changes
+func (fs *BaseFS) Start() {
+	// Fill root container and do changes
+	go func() {
+		fs.Refresh()
+		for {
+			fs.CheckForChanges()
+			time.Sleep(fs.Config.RefreshTime)
+		}
+	}()
+}
+
 // Refresh should be renamed to Load or something
 func (fs *BaseFS) Refresh() {
 	// Try
 	files, err := fs.Service.ListAll()
-	if err == nil { // Do something repeat maybe?
-
+	if err != nil { // Repeat refresh maybe?
 	}
+
+	log.Println("Files loaded:", len(files))
 	root := NewFileContainer(fs)
 	for _, file := range files {
 		root.FileEntry(file) // Try to find in previous root
 	}
-	log.Println("File count:", root.Count())
+	log.Println("Files processed")
 	fs.Root = root
+}
+
+// CheckForChanges polling
+func (fs *BaseFS) CheckForChanges() {
+	changes, err := fs.Service.Changes()
+	if err != nil {
+		return
+	}
+	for _, c := range changes {
+		entry := fs.Root.FindByID(c.ID)
+		if c.Remove {
+			if entry != nil {
+				fs.Root.RemoveEntry(entry)
+			}
+			continue
+		}
+		if entry != nil {
+			entry.SetFile(c.File, fs.Config.UID, fs.Config.GID)
+		} else {
+			//Create new one
+			fs.Root.FileEntry(c.File) // Creating new one
+		}
+	}
 }
 
 ////////////////////////////////////////////////////////
@@ -141,9 +185,9 @@ func (fs *BaseFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err error
 	}
 
 	if op.Offset == 0 { // Rebuild/rewind dir list
+
 		fh.entries = []fuseutil.Dirent{}
 		children := fs.Root.ListByParent(fh.entry)
-
 		for i, v := range children {
 			fusetype := fuseutil.DT_File
 			if v.IsDir() {
@@ -167,6 +211,7 @@ func (fs *BaseFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err error
 	if index > 0 {
 		index++
 	}
+
 	for i := index; i < len(fh.entries); i++ {
 		n := fuseutil.WriteDirent(op.Dst[op.BytesRead:], fh.entries[i])
 		if n == 0 {
@@ -302,7 +347,7 @@ func (fs *BaseFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err
 		return fuse.ENOENT
 	}
 	// Only write on child folders
-	if parentFile == fs.Root.FileEntries[fuseops.RootInodeID] {
+	if fs.Config.Safemode && parentFile == fs.Root.FileEntries[fuseops.RootInodeID] {
 		return syscall.EPERM
 	}
 
@@ -315,7 +360,7 @@ func (fs *BaseFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err
 	// Parent entry/Name
 	entry, err := fs.Root.CreateFile(parentFile, op.Name, false)
 	if err != nil {
-		return err
+		return fuseErr(err)
 	}
 	// Associate a temp file to a new handle
 	// Local copy
@@ -372,7 +417,7 @@ func (fs *BaseFS) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) (err e
 	if handle.uploadOnDone { // or if content changed basically
 		err = fs.Root.Sync(handle.entry)
 		if err != nil {
-			return fuse.EINVAL
+			return fuseErr(err)
 		}
 	}
 	return
@@ -393,7 +438,7 @@ func (fs *BaseFS) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFile
 // Unlink remove file and remove from local cache entry
 // SPECIFIC
 func (fs *BaseFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error) {
-	if op.Parent == fuseops.RootInodeID {
+	if fs.Config.Safemode && op.Parent == fuseops.RootInodeID {
 		return syscall.EPERM
 	}
 	parentEntry := fs.Root.FindByInode(op.Parent)
@@ -406,12 +451,14 @@ func (fs *BaseFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error) 
 	if fileEntry == nil {
 		return fuse.ENOATTR
 	}
-	return fs.Root.DeleteFile(fileEntry)
+	err = fs.Root.DeleteFile(fileEntry)
+
+	return fuseErr(err)
 }
 
 // MkDir creates a directory on a parent dir
 func (fs *BaseFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) {
-	if op.Parent == fuseops.RootInodeID {
+	if fs.Config.Safemode && op.Parent == fuseops.RootInodeID {
 		return syscall.EPERM
 	}
 
@@ -422,7 +469,7 @@ func (fs *BaseFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) {
 
 	entry, err := fs.Root.CreateFile(parentFile, op.Name, true)
 	if err != nil {
-		return err
+		return fuseErr(err)
 	}
 
 	op.Entry = fuseops.ChildInodeEntry{
@@ -437,7 +484,7 @@ func (fs *BaseFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) {
 
 // RmDir fuse implementation
 func (fs *BaseFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) {
-	if op.Parent == fuseops.RootInodeID {
+	if fs.Config.Safemode && op.Parent == fuseops.RootInodeID {
 		return syscall.EPERM
 	}
 
@@ -450,7 +497,7 @@ func (fs *BaseFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) {
 
 	err = fs.Root.DeleteFile(theFile)
 	if err != nil {
-		return fuse.ENOTEMPTY
+		return fuseErr(err)
 	}
 
 	return
@@ -458,43 +505,52 @@ func (fs *BaseFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) {
 
 // Rename fuse implementation
 func (fs *BaseFS) Rename(ctx context.Context, op *fuseops.RenameOp) (err error) {
-	if op.OldParent == fuseops.RootInodeID || op.NewParent == fuseops.RootInodeID {
+
+	if fs.Config.Safemode && (op.OldParent == fuseops.RootInodeID || op.NewParent == fuseops.RootInodeID) {
 		return syscall.EPERM
 	}
-	oldParentFile := fs.Root.FindByInode(op.OldParent)
-	if oldParentFile == nil {
+	oldParentEntry := fs.Root.FindByInode(op.OldParent)
+	if oldParentEntry == nil {
 		return fuse.ENOENT
 	}
-	newParentFile := fs.Root.FindByInode(op.NewParent)
-	if newParentFile == nil {
+	newParentEntry := fs.Root.FindByInode(op.NewParent)
+	if newParentEntry == nil {
 		return fuse.ENOENT
 	}
 
 	//oldFile := oldParentFile.FindByName(op.OldName, false)
-	oldEntry := fs.Root.Lookup(oldParentFile, op.OldName)
+	oldEntry := fs.Root.Lookup(oldParentEntry, op.OldName)
 
 	// Although GDrive allows duplicate names, there is some issue with inode caching
 	// So we prevent a rename to a file with same name
 	//existsFile := newParentFile.FindByName(op.NewName, false)
-	existsEntry := fs.Root.Lookup(newParentFile, op.NewName)
+	existsEntry := fs.Root.Lookup(newParentEntry, op.NewName)
 	if existsEntry != nil {
 		return fuse.EEXIST
 	}
 
-	nFile, err := fs.Service.Move(oldEntry.File, newParentFile.File, op.NewName)
+	nFile, err := fs.Service.Move(oldEntry.File, newParentEntry.File, op.NewName)
 	if err != nil {
-		return fuse.EINVAL
+		return fuseErr(err)
 	}
-
-	//oldEntry.SetFile(nFile, fs.Config.UID, fs.Config.GID)
 
 	// Why remove and add instead of setting file, is just in case we have an existing name FileEntry solves the name adding duplicates helpers
 	fs.Root.RemoveEntry(oldEntry)
 	fs.Root.FileEntry(nFile, oldEntry.Inode) // Use this same inode
 
-	//oldParentFile.RemoveChild(oldFile)
-	//newParentFile.AppendGFile(updatedFile, oldFile.Inode)
-
 	return
 
+}
+
+func fuseErr(err error) error {
+	switch err {
+	case ErrPermission:
+		return syscall.EPERM
+	case ErrNotImplemented:
+		return fuse.ENOSYS
+	case nil:
+		return nil
+	default:
+		return fuse.EINVAL
+	}
 }

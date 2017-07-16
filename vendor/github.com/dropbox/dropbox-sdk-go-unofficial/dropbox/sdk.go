@@ -95,6 +95,7 @@ func (c *Context) NewRequest(
 	}
 	if !authed {
 		req.Header.Del("Authorization")
+
 	}
 	return req, nil
 }

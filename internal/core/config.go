@@ -13,6 +13,7 @@ type Config struct {
 	GID         uint32 // Mount GID
 	Target      string // should be a folder
 	Source      string
+	Safemode    bool
 
 	// Driver specific params:
 	Param map[string]interface{}
