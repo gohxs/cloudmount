@@ -9,13 +9,12 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/coreutil"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/basefs"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/oauth2util"
-
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox"
 	dbfiles "github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/files"
+	"github.com/gohxs/cloudmount/internal/core"
+	"github.com/gohxs/cloudmount/internal/coreutil"
+	"github.com/gohxs/cloudmount/internal/fs/basefs"
+	"github.com/gohxs/cloudmount/internal/oauth2util"
 )
 
 // Service basefs Service implementation

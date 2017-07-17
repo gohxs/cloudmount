@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/coreutil"
+	"github.com/gohxs/cloudmount/internal/core"
+	"github.com/gohxs/cloudmount/internal/coreutil"
 )
 
 func parseFlags(config *core.Config) (err error) {

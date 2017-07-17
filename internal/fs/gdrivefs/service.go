@@ -6,12 +6,12 @@ import (
 	"os"
 	"time"
 
-	"golang.org/x/oauth2"
+	"github.com/gohxs/cloudmount/internal/core"
+	"github.com/gohxs/cloudmount/internal/coreutil"
+	"github.com/gohxs/cloudmount/internal/fs/basefs"
+	"github.com/gohxs/cloudmount/internal/oauth2util"
 
-	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/coreutil"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/basefs"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/oauth2util"
+	"golang.org/x/oauth2"
 
 	drive "google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"

@@ -3,7 +3,7 @@ package core
 import (
 	"time"
 
-	"dev.hexasoftware.com/hxs/cloudmount/internal/coreutil"
+	"github.com/gohxs/cloudmount/internal/coreutil"
 )
 
 // Config struct

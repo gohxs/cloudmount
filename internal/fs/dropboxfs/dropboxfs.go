@@ -1,9 +1,9 @@
 package dropboxfs
 
 import (
-	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/basefs"
-	"dev.hexasoftware.com/hxs/prettylog"
+	"github.com/gohxs/cloudmount/internal/core"
+	"github.com/gohxs/cloudmount/internal/fs/basefs"
+	"github.com/gohxs/prettylog"
 )
 
 var (

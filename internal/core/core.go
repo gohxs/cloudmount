@@ -12,9 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"dev.hexasoftware.com/hxs/cloudmount/internal/coreutil"
-	"dev.hexasoftware.com/hxs/prettylog"
-
+	"github.com/gohxs/cloudmount/internal/coreutil"
+	"github.com/gohxs/prettylog"
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseutil"
 )

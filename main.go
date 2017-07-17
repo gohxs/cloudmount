@@ -9,12 +9,13 @@ import (
 	"fmt"
 	"os"
 
-	"os/exec"
+	"github.com/gohxs/cloudmount/internal/core"
 
-	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/dropboxfs"
-	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/gdrivefs"
-	"dev.hexasoftware.com/hxs/prettylog"
+	"github.com/gohxs/cloudmount/internal/fs/dropboxfs"
+	"github.com/gohxs/cloudmount/internal/fs/gdrivefs"
+	"github.com/gohxs/prettylog"
+
+	"os/exec"
 )
 
 var (

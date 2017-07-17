@@ -10,13 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
-	"dev.hexasoftware.com/hxs/prettylog"
-
 	"golang.org/x/net/context"
 
 	"google.golang.org/api/googleapi"
 
+	"github.com/gohxs/cloudmount/internal/core"
+	"github.com/gohxs/prettylog"
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
