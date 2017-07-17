@@ -108,8 +108,8 @@ func (s *Service) ListAll() ([]*basefs.File, error) {
 		Do()
 	if err != nil {
 		// Sometimes gdrive returns error 500 randomly
-		log.Println("GDrive ERR:", err)
-		return s.ListAll() // retry
+		errlog.Println("GDrive ERR:", err)
+		return s.ListAll() // retry ??
 		//return nil, err
 	}
 
@@ -123,7 +123,7 @@ func (s *Service) ListAll() ([]*basefs.File, error) {
 			Fields(googleapi.Field("nextPageToken"), gdFields).
 			Do()
 		if err != nil {
-			log.Println("GDrive ERR:", err)
+			errlog.Println("GDrive ERR:", err)
 			return s.ListAll() // retry
 			//return nil, err
 		}
