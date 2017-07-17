@@ -35,28 +35,29 @@ func main() {
 
 	prettylog.Global()
 
-	// getClient
 	fmt.Fprintf(os.Stderr, "%s-%s\n", Name, Version)
-	core := core.New()
+	// getClient
+	c := core.New()
 
 	// More will be added later
-	core.Drivers["gdrive"] = gdrivefs.New
-	core.Drivers["dropbox"] = dropboxfs.New
+	c.Drivers["gdrive"] = gdrivefs.New
+	c.Drivers["dropbox"] = dropboxfs.New
 
-	if err := parseFlags(&core.Config); err != nil {
+	if err := parseFlags(&c.Config); err != nil {
 		log.Fatalln(err)
 	}
 
-	err := core.Init() // Before daemon, because might require interactivity
+	err := c.Init() // Before daemon, because might require interactivity
 	if err != nil {
 		log.Println("Err:", err)
 		return
 	}
+	fmt.Fprintf(os.Stderr, "%s on %s type %s\n", c.Config.Source, c.Config.Target, c.Config.Type)
 
 	////////////////////////////////
 	// Daemon
 	/////////////////
-	if core.Config.Daemonize {
+	if c.Config.Daemonize {
 		subArgs := []string{}
 		for _, arg := range os.Args[1:] {
 			if arg == "-d" { // ignore daemon flag
@@ -74,6 +75,6 @@ func main() {
 		return
 	}
 
-	core.Mount()
+	c.Mount()
 
 }

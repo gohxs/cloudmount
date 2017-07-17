@@ -35,6 +35,9 @@ func parseFlags(config *core.Config) (err error) {
 
 	fileExt := filepath.Ext(os.Args[0])
 	if fileExt != "" {
+		if config.Type != "" {
+			log.Fatal("Cannot specify -t when type is specified in executable name")
+		}
 		config.Type = fileExt[1:]
 	}
 
