@@ -24,18 +24,19 @@ type FileContainer struct {
 }
 
 func NewFileContainer(fs *BaseFS) *FileContainer {
+
 	fc := &FileContainer{
 		FileEntries: map[fuseops.InodeID]*FileEntry{},
 		fs:          fs,
 		//client:  fs.Client,
 		inodeMU: &sync.Mutex{},
-		uid:     fs.Config.UID,
-		gid:     fs.Config.GID,
+		uid:     fs.Config.Options.UID,
+		gid:     fs.Config.Options.GID,
 	}
 	rootEntry := fc.FileEntry(nil, fuseops.RootInodeID)
 	rootEntry.Attr.Mode = os.FileMode(0755) | os.ModeDir
-	rootEntry.Attr.Uid = fs.Config.UID
-	rootEntry.Attr.Gid = fs.Config.GID
+	rootEntry.Attr.Uid = fc.uid
+	rootEntry.Attr.Gid = fc.gid
 
 	return fc
 }
@@ -169,7 +170,6 @@ func (fc *FileContainer) FileEntry(file *File, inodeOps ...fuseops.InodeID) *Fil
 		log.Println("Filename contains invalid chars, sanitizing: '%s'-'%s'", name, newName)
 		name = newName
 	}
-
 	fe := &FileEntry{
 		Inode: inode,
 		Name:  name,
@@ -177,6 +177,7 @@ func (fc *FileContainer) FileEntry(file *File, inodeOps ...fuseops.InodeID) *Fil
 	// Temp gfile?
 	if file != nil {
 		fe.SetFile(file, fc.uid, fc.gid)
+		//fe.SetFile(file)
 	}
 	fc.FileEntries[inode] = fe
 
@@ -209,8 +210,8 @@ func (fc *FileContainer) Sync(fe *FileEntry) (err error) {
 	if err != nil {
 		return err
 	}
-	log.Println("Uploaded file size:", upFile.Size)
 	fe.SetFile(upFile, fc.uid, fc.gid) // update local GFile entry
+	//fe.SetFile(upFile) // update local GFile entry
 	return
 
 }

@@ -9,6 +9,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
+	"dev.hexasoftware.com/hxs/cloudmount/internal/coreutil"
 	"dev.hexasoftware.com/hxs/cloudmount/internal/fs/basefs"
 	"dev.hexasoftware.com/hxs/cloudmount/internal/oauth2util"
 
@@ -32,9 +33,9 @@ func NewService(coreConfig *core.Config) *Service {
 	log.Println("Initializing gdrive service")
 	log.Println("Source config:", coreConfig.Source)
 
-	err := core.ParseConfig(coreConfig.Source, &serviceConfig)
+	err := coreutil.ParseConfig(coreConfig.Source, &serviceConfig)
 	if err != nil {
-		log.Fatalf("Unable to read <source>: %v", err)
+		errlog.Fatalf("Unable to read <source>: %v", err)
 	}
 	config := &oauth2.Config{
 		ClientID:     serviceConfig.ClientSecret.ClientID,
@@ -49,13 +50,13 @@ func NewService(coreConfig *core.Config) *Service {
 	if serviceConfig.Auth == nil {
 		tok := oauth2util.GetTokenFromWeb(config)
 		serviceConfig.Auth = tok
-		core.SaveConfig(coreConfig.Source, &serviceConfig)
+		coreutil.SaveConfig(coreConfig.Source, &serviceConfig)
 	}
 
 	client := config.Client(oauth2.NoContext, serviceConfig.Auth)
 	driveCli, err := drive.New(client)
 	if err != nil {
-		log.Fatalf("Unable to retrieve drive Client: %v", err)
+		errlog.Fatalf("Unable to retrieve drive Client: %v", err)
 	}
 
 	return &Service{client: driveCli}

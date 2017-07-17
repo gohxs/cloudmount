@@ -1,13 +1,29 @@
 cloudmount
 =====================
-
 Linux util to Mount cloud drives
 
-####Usage:
+**Table of Contents**
+
+- [Installation](#installation)
+- [Usage](#usage)
+- [Example](#example)
+- [Cloud services](#cloud-services)
+  - [Google drive](#google-drive)
+  - [Dropbox](#dropbox)
+- [Signals](#signals)
+
+<a name="installation"></a>
+#### Installation
+```bash
+$ go get dev.hexasoftware.com/hxs/cloudmount
+```
+
+<a name="usage"></a>
+#### Usage
 ```bash
 $ cloudmount -h
 
-cloudmount-0.3-3-gadf4880 - built: 2017-07-11 01:34:58 UTC
+cloudmount-0.4-5-gf01e8fb - built: 2017-07-17 05:09:51 UTC
 
 Usage: cloudmount [options] [<source>] <directory>
 
@@ -16,35 +32,40 @@ Source: can be json/yaml configuration file usually with credentials or cloud sp
 Options:
   -d	Run app in background
   -o string
-    	uid,gid ex: -o uid=1000,gid=0 
+    	uid=1000,gid=1000,ro=false
   -r duration
-    	Timed cloud synchronization interval [if applied] (default 2m0s)
+    	Timed cloud synchronization interval [if applied] (default 5s)
   -t string
     	which cloud service to use [gdrive] (default "gdrive")
   -v	Verbose log
+  -vv
+    	Extra Verbose log
   -w string
-    	Work dir, path that holds configurations (default "<homedir>/.cloudmount")
+    	Work dir, path that holds configurations (default "$HOME/.cloudmount")
+
 ```
-
-
-#### Example:
+<a name="example"></a>
+#### Example
 ```bash
-$ go get dev.hexasoftware.com/hxs/cloudmount
-# will default source file to $HOME/.cloudmount/gdrive.json
-$ cloudmount MOUNTPOINT
+# will default source file to $HOME/.cloudmount/gdrive.yaml
+$ cloudmount -t gdrive /mnt/gdrive
 # or 
-$ cloudmount gdrive.json MOUNTPOINT
-
+$ cloudmount -t dropbox dropbox.yaml /mnt/gdrive
 ```
-#### Source config:
-Configuration files/source can be written in following formats:
-* json
+
+**Source config**
+Configuration files/source can be written in following formats:   
 * yaml
+* json
 
-#### Support for:
+<a name="cloud-services"></a>
+#### Cloud services
 * Google Drive
+* Dropbox
 
+--------------
 
+<a name="google-drive"></a>
 ### Google Drive
 
 Setup Google client secrets:
@@ -60,46 +81,62 @@ https://console.developers.google.com/apis/credentials
 >	5. Select the application type Other, enter the name "Drive API Quickstart", and click the Create button.
 >	6. With the result dialog, copy clientID and client secret and create json file as shown in example (this can be retrieved any time by clicking on the api key)
 
-sample *gdrive.json* config:    
-```json
-{
-  "client_secret": {
-   "client_id": "CLIENTID",
-   "client_secret": "CLIENTSECRET"
-  }
-}
-```
-or yaml format:
+sample _gdrive.yaml_ config:    
 ```yaml
 client_secret:
-  client_id: CLIENTID
-  client_secret: CLIENTSECRET
+  client_id: *Client ID*
+  client_secret: *Client Secret*
 ```
-
 ```bash
-$ cloudmount gdrive.json $HOME/mntpoint
+$ cloudmount gdrive.yaml $HOME/mntpoint
 ```
 
-Also it's possible to create the json/yaml file in home directory as 
-__$HOME/.cloudmount/gdrive.json__
-if &lt;source&gt; parameter is ommited it will default to this file
-
+Also it's possible to create the yaml file in home directory as 
+__$HOME/.cloudmount/gdrive.yaml__
+if &lt;source&gt; parameter is omitted it will default to this file
 
 cloudmount gdrivefs will retrieve an oauth2 token and save in same file
 
 
+<a name="dropbox"></a>
+### Dropbox
+
+Setup Dropbox client secrets:
+
+https://www.dropbox.com/developers/apps
+
+> 1. Click _Create App_ 
+> 2. Select the API, type of access, and App name 
+> 3. Use the values from _App key_ and _App secret_
+
+sample _dropbox.yaml_ file:
+```yaml
+client_secret:
+  client_id: *App Key*
+  client_secret: *App secret*
+
+```
+
+```bash
+$ cloudmount -t dropbox savedfile.yaml /mnt/point
+```
+
+On the first run a link will appear and it will request a token resuling from the link
+
+--------------------
 
 #### Signals
 Signal | Action                                                                                               | ex
 -------|------------------------------------------------------------------------------------------------------|-----------------
-USR1   | Refreshes directory tree from file system                                                            | killall -USR1 gdrivemount
-HUP    | Perform a GC and shows memory usage <small>Works when its not running in daemon mode</small>         | killall -HUP gdrivemount
+USR1   | Refreshes directory tree from file system                                                            | killall -USR1 cloudmount
+HUP    | Perform a GC and shows memory usage <small>Works when its not running in daemon mode</small>         | killall -HUP cloudmount
 
 
 
 #### TODO & IDEAS:
 * Consider using github.com/codegangsta/cli
 * Create test suit to implement new packages
-* GDrive: long term caching, maintain most used files locally until flush/change
+* Caching: long term caching, maintain most used files locally until flush/change
+
 
 

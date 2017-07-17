@@ -3,15 +3,16 @@ package core
 import (
 	"context"
 	"flag"
+	glog "log"
 	"os"
 	"os/signal"
 	"os/user"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"syscall"
 	"time"
 
+	"dev.hexasoftware.com/hxs/cloudmount/internal/coreutil"
 	"dev.hexasoftware.com/hxs/prettylog"
 
 	"github.com/jacobsa/fuse"
@@ -19,7 +20,9 @@ import (
 )
 
 var (
-	log = prettylog.New("cloudmount")
+	pname  = "cloudmount"
+	log    = prettylog.Dummy()
+	errlog = prettylog.New(pname + "-err")
 )
 
 // Core struct
@@ -39,28 +42,32 @@ func New() *Core {
 		panic(err)
 	}
 
-	uid, err := strconv.Atoi(usr.Uid)
+	var uid, gid uint32
+	err = coreutil.StringAssign(usr.Uid, &uid)
 	if err != nil {
 		panic(err)
 	}
-	gid, err := strconv.Atoi(usr.Gid)
+	err = coreutil.StringAssign(usr.Gid, &gid)
 	if err != nil {
-		panic(gid)
+		panic(err)
 	}
 
 	return &Core{
 		Drivers: map[string]DriverFactory{},
 		Config: Config{
 			Daemonize:   false,
-			Type:        "gdrive",
+			Type:        "",
 			VerboseLog:  false,
 			RefreshTime: 5 * time.Second,
 			HomeDir:     filepath.Join(usr.HomeDir, ".cloudmount"),
 			Source:      filepath.Join(usr.HomeDir, ".cloudmount", "gdrive.yaml"),
 
-			Safemode: false,
-			UID:      uint32(uid),
-			GID:      uint32(gid),
+			// Defaults at least
+			Options: Options{
+				UID:      uint32(uid),
+				GID:      uint32(gid),
+				Readonly: false,
+			},
 		},
 	}
 
@@ -69,9 +76,13 @@ func New() *Core {
 // Init to be run after configuration
 func (c *Core) Init() (err error) {
 
+	if c.Config.VerboseLog {
+		log = prettylog.New(pname)
+	}
+
 	fsFactory, ok := c.Drivers[c.Config.Type]
 	if !ok {
-		log.Fatal("CloudFS not supported")
+		errlog.Fatal("CloudFS not supported")
 	}
 
 	c.CurrentFS = fsFactory(c) // Factory
@@ -93,13 +104,25 @@ func (c *Core) Mount() {
 	var err error
 	var mfs *fuse.MountedFileSystem
 
-	if c.Config.VerboseLog {
-		mfs, err = fuse.Mount(mountPath, server, &fuse.MountConfig{DebugLogger: prettylog.New("fuse"), ErrorLogger: prettylog.New("fuse-err")})
-	} else {
-		mfs, err = fuse.Mount(mountPath, server, &fuse.MountConfig{})
+	fsname := c.Config.Source
+
+	var dbgLogger *glog.Logger
+	var errLogger *glog.Logger
+	if c.Config.Verbose2Log { // Extra verbose
+		dbgLogger = prettylog.New("fuse")
+		errLogger = prettylog.New("fuse-err")
 	}
+
+	mfs, err = fuse.Mount(mountPath, server, &fuse.MountConfig{
+		VolumeName: "cloudmount",
+		//Options:     coreutil.OptionMap(c.Config.Options),
+		FSName:      fsname,
+		DebugLogger: dbgLogger,
+		ErrorLogger: errLogger,
+		ReadOnly:    c.Config.Options.Readonly,
+	})
 	if err != nil {
-		log.Fatal("Failed mounting path", flag.Arg(0), err)
+		errlog.Fatal("Failed mounting path ", flag.Arg(0), err)
 	}
 
 	// Signal handling to refresh Drives
@@ -136,7 +159,7 @@ func (c *Core) Mount() {
 	}()
 
 	if err := mfs.Join(ctx); err != nil {
-		log.Fatalf("Joining: %v", err)
+		errlog.Fatalf("Joining: %v", err)
 	}
 
 }

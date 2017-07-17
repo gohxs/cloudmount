@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"dev.hexasoftware.com/hxs/cloudmount/internal/core"
+	"dev.hexasoftware.com/hxs/cloudmount/internal/coreutil"
 )
 
 func parseFlags(config *core.Config) (err error) {
@@ -18,10 +17,11 @@ func parseFlags(config *core.Config) (err error) {
 	flag.StringVar(&config.Type, "t", config.Type, "which cloud service to use [gdrive]")
 	flag.BoolVar(&config.Daemonize, "d", false, "Run app in background")
 	flag.BoolVar(&config.VerboseLog, "v", false, "Verbose log")
+	flag.BoolVar(&config.Verbose2Log, "vv", false, "Extra Verbose log")
 	flag.StringVar(&config.HomeDir, "w", config.HomeDir, "Work dir, path that holds configurations")
 	flag.DurationVar(&config.RefreshTime, "r", config.RefreshTime, "Timed cloud synchronization interval [if applied]")
 
-	flag.StringVar(&mountoptsFlag, "o", "", "uid,gid,safemode ex: -o uid=1000,gid=0")
+	flag.StringVar(&mountoptsFlag, "o", "", fmt.Sprintf("%v", config.Options))
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "\n")
@@ -32,6 +32,11 @@ func parseFlags(config *core.Config) (err error) {
 		fmt.Fprintf(os.Stderr, "\n")
 	}
 	flag.Parse()
+
+	fileExt := filepath.Ext(os.Args[0])
+	if fileExt != "" {
+		config.Type = fileExt[1:]
+	}
 
 	if flag.NArg() < 1 {
 		flag.Usage()
@@ -45,41 +50,30 @@ func parseFlags(config *core.Config) (err error) {
 		config.Source = flag.Arg(0)
 		config.Target = flag.Arg(1)
 	}
-	/////////////////////////////////////
-	// Parse mount opts
-	/////////////////
-	pmountopts := strings.Split(mountoptsFlag, ",")
-	mountopts := map[string]string{}
-	for _, v := range pmountopts {
-		if keyindex := strings.Index(v, "="); keyindex != -1 {
-			key := strings.TrimSpace(v[:keyindex])
-			value := strings.TrimSpace(v[keyindex+1:])
-			mountopts[key] = value
-		}
+
+	if config.Verbose2Log {
+		config.VerboseLog = true
 	}
 
-	/////////////////////////////////////
-	// Use mount opts
-	///////////////
-	uidStr, ok := mountopts["uid"]
-	if ok {
-		uid, err := strconv.Atoi(uidStr)
-		if err != nil {
-			panic(err)
+	// Read fs type from config file
+	sourceType := struct {
+		Type string `json:"type"`
+	}{}
+	coreutil.ParseConfig(config.Source, &sourceType)
+	if sourceType.Type != "" {
+		if config.Type != "" && sourceType.Type != config.Type {
+			log.Fatalf("ERR: service mismatch <source> specifies '%s' while flag -t is '%s'", sourceType.Type, config.Type)
 		}
-		config.UID = uint32(uid)
+		config.Type = sourceType.Type
 	}
 
-	gidStr, ok := mountopts["gid"]
-	if ok {
-		gid, err := strconv.Atoi(gidStr)
-		if err != nil {
-			panic(err)
-		}
-		config.GID = uint32(gid)
+	if config.Type == "" {
+		log.Fatalf("ERR: Missing -t param, unknown file system")
 	}
-	if mountopts["safemode"] == "true" {
-		config.Safemode = true
+
+	err = coreutil.ParseOptions(mountoptsFlag, &config.Options)
+	if err != nil {
+		log.Fatal("ERR: Invalid syntax parsing mount options")
 	}
 	return
 }
