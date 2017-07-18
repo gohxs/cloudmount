@@ -137,6 +137,6 @@ HUP    | Perform a GC and shows memory usage <small>Works when its not running i
 * Consider using github.com/codegangsta/cli
 * Create test suit to implement new packages
 * Caching: long term caching, maintain most used files locally until flush/change
-
+* Add logging to syslog while on -d
 
 
