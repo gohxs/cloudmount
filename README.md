@@ -121,7 +121,7 @@ client_secret:
 $ cloudmount -t dropbox savedfile.yaml /mnt/point
 ```
 
-On the first run a link will appear and it will request a token resuling from the link
+On the first run a link will appear and it will request a token resulting from the link
 
 --------------------
 
