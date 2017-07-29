@@ -15,7 +15,7 @@ Linux util to Mount cloud drives
 <a name="installation"></a>
 #### Installation
 ```bash
-$ go get dev.hexasoftware.com/hxs/cloudmount
+$ go get github.com/gohxs/cloudmount
 ```
 
 <a name="usage"></a>
@@ -50,7 +50,7 @@ Options:
 # will default source file to $HOME/.cloudmount/gdrive.yaml
 $ cloudmount -t gdrive /mnt/gdrive
 # or 
-$ cloudmount -t dropbox dropbox.yaml /mnt/gdrive
+$ cloudmount -t dropbox dropbox.yaml /mnt/dropbox
 ```
 
 **Source config**
