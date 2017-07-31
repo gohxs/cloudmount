@@ -5,12 +5,10 @@ import (
 	"time"
 )
 
-// This could be a struct
-// And service would be creating these
+//File entry structure all basefs based services must use these
 type File struct {
-	ID   string
-	Name string
-	// Build Attr from this
+	ID           string
+	Name         string
 	Size         uint64
 	CreatedTime  time.Time
 	ModifiedTime time.Time
@@ -20,6 +18,7 @@ type File struct {
 	Data         interface{} // Any thing
 }
 
+// HasParent check file parenting
 func (f *File) HasParent(parent *File) bool {
 	parentID := ""
 	if parent != nil {

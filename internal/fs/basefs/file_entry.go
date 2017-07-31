@@ -12,7 +12,7 @@ type FileEntry struct {
 	File     *File                   // Remote file information
 	Name     string                  // local name
 	Attr     fuseops.InodeAttributes // Cached attributes
-	tempFile *fileWrapper            // Cached file
+	tempFile *FileWrapper            // Cached file
 }
 
 // SetFile update attributes and set drive.File

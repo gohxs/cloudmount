@@ -2,6 +2,7 @@ package gdrivefs
 
 import "golang.org/x/oauth2"
 
+//Config  gdrive.yaml config file structure
 type Config struct {
 	ClientSecret struct {
 		ClientID     string `json:"client_id" yaml:"client_id"`

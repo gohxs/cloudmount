@@ -22,11 +22,13 @@ const (
 	gdFields   = googleapi.Field("files(" + fileFields + ")")
 )
 
+//Service gdrive service information
 type Service struct {
 	client              *drive.Service
 	savedStartPageToken string
 }
 
+//NewService creates and initializes a new GDrive service
 func NewService(coreConfig *core.Config) *Service {
 
 	serviceConfig := Config{}
@@ -63,7 +65,7 @@ func NewService(coreConfig *core.Config) *Service {
 
 }
 
-//func (s *Service) Changes() ([]*drive.Change, error) { // Return a list of New file entries
+//Changes populate a list with changes to be handled on basefs
 func (s *Service) Changes() ([]*basefs.Change, error) { // Return a list of New file entries
 	if s.savedStartPageToken == "" {
 		startPageTokenRes, err := s.client.Changes.GetStartPageToken().Do()
@@ -94,6 +96,7 @@ func (s *Service) Changes() ([]*basefs.Change, error) { // Return a list of New 
 	return ret, nil
 }
 
+//ListAll lists all files recursively to cache locally
 func (s *Service) ListAll() ([]*basefs.File, error) {
 	fileList := []*drive.File{}
 	// Service list ALL ???
@@ -167,6 +170,7 @@ func (s *Service) ListAll() ([]*basefs.File, error) {
 
 }
 
+//Create create an entry in google drive
 func (s *Service) Create(parent *basefs.File, name string, isDir bool) (*basefs.File, error) {
 	if parent == nil {
 		return nil, basefs.ErrPermission
@@ -190,6 +194,7 @@ func (s *Service) Create(parent *basefs.File, name string, isDir bool) (*basefs.
 
 }
 
+//Upload a file
 func (s *Service) Upload(reader io.Reader, file *basefs.File) (*basefs.File, error) {
 	ngFile := &drive.File{}
 	up := s.client.Files.Update(file.ID, ngFile)
@@ -201,6 +206,7 @@ func (s *Service) Upload(reader io.Reader, file *basefs.File) (*basefs.File, err
 	return File(upFile), nil
 }
 
+//DownloadTo from gdrive to a writer
 func (s *Service) DownloadTo(w io.Writer, file *basefs.File) error {
 
 	var res *http.Response
@@ -227,6 +233,7 @@ func (s *Service) DownloadTo(w io.Writer, file *basefs.File) error {
 	return nil
 }
 
+//Move a file in drive
 func (s *Service) Move(file *basefs.File, newParent *basefs.File, name string) (*basefs.File, error) {
 	/*if newParent == nil {
 		return nil, basefs.ErrPermission
@@ -250,6 +257,7 @@ func (s *Service) Move(file *basefs.File, newParent *basefs.File, name string) (
 	return File(updatedFile), err
 }
 
+//Delete file from drive
 func (s *Service) Delete(file *basefs.File) error {
 	// PRevent removing from root?
 	err := s.client.Files.Delete(file.ID).Do()
@@ -259,6 +267,7 @@ func (s *Service) Delete(file *basefs.File) error {
 	return nil
 }
 
+//File converts a google drive File structure to baseFS
 func File(gfile *drive.File) *basefs.File {
 	if gfile == nil {
 		return nil

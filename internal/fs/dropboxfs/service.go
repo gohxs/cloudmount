@@ -23,6 +23,7 @@ type Service struct {
 	savedCursor string
 }
 
+//NewService creates Dropbox service
 func NewService(coreConfig *core.Config) *Service {
 
 	serviceConfig := Config{}
@@ -92,11 +93,11 @@ func (s *Service) Changes() ([]*basefs.Change, error) {
 			var change *basefs.Change
 			switch t := e.(type) {
 			case *dbfiles.DeletedMetadata:
-				change = &basefs.Change{t.PathLower, File(t), true}
+				change = &basefs.Change{ID: t.PathLower, File: File(t), Remove: true}
 			case *dbfiles.FileMetadata:
-				change = &basefs.Change{t.PathLower, File(t), false}
+				change = &basefs.Change{ID: t.PathLower, File: File(t), Remove: false}
 			case *dbfiles.FolderMetadata:
-				change = &basefs.Change{t.PathLower, File(t), false}
+				change = &basefs.Change{ID: t.PathLower, File: File(t), Remove: false}
 			}
 			ret = append(ret, change)
 
@@ -138,7 +139,8 @@ func (s *Service) ListAll() ([]*basefs.File, error) {
 	}
 
 	for res.HasMore {
-		res, err = fileService.ListFolderContinue(&dbfiles.ListFolderContinueArg{Cursor: res.Cursor})
+		res, _ = fileService.ListFolderContinue(&dbfiles.ListFolderContinueArg{Cursor: res.Cursor})
+		// Ignoring error?
 		log.Println("Loaded: res.Entries", len(res.Entries))
 		for _, e := range res.Entries {
 			ret = append(ret, File(e))

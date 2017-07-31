@@ -4,17 +4,18 @@ package basefs
 
 import "os"
 
-// osfileWrapper
-
-type fileWrapper struct {
+//FileWrapper helper to prevent http.Post to close my files
+type FileWrapper struct {
 	*os.File
 }
 
-func (f *fileWrapper) Close() error {
-	//panic("I don't want anyone to close this file")
+//Close ignore close
+func (f *FileWrapper) Close() error {
 	// Ignore closers
 	return nil
 }
-func (f *fileWrapper) RealClose() error {
+
+//RealClose to be called internally to close the file
+func (f *FileWrapper) RealClose() error {
 	return f.File.Close()
 }

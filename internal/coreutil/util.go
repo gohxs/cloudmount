@@ -13,7 +13,7 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
-// ParseConfig, reads yaml or json file into a struct
+// ParseConfig reads yaml or json file into a struct
 func ParseConfig(srcfile string, out interface{}) (err error) {
 	if srcfile == "" {
 		return
@@ -40,6 +40,7 @@ func ParseConfig(srcfile string, out interface{}) (err error) {
 	return err
 }
 
+// SaveConfig saves configuration file in specified 'json or yaml' extension
 func SaveConfig(name string, obj interface{}) (err error) {
 	var data []byte
 	if strings.HasSuffix(name, ".json") {
@@ -136,6 +137,7 @@ func StringAssign(s string, v interface{}) (err error) {
 	return
 }
 
+//OptionString helper to print a struct into -o mount like key=value
 func OptionString(o interface{}) string {
 	ret := ""
 	typ := reflect.TypeOf(o) // Should be pointer
@@ -166,6 +168,8 @@ func OptionString(o interface{}) string {
 
 	return ret
 }
+
+// OptionMap retrieves mount like -o key,value into a map
 func OptionMap(o interface{}) map[string]string {
 	ret := map[string]string{}
 	typ := reflect.TypeOf(o) // Should be pointer

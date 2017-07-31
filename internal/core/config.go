@@ -32,7 +32,3 @@ type Options struct { // are Options for specific driver?
 func (o Options) String() string {
 	return coreutil.OptionString(o)
 }
-func (o Options) ToMap() map[string]string {
-	// Convert to map
-	return map[string]string{}
-}

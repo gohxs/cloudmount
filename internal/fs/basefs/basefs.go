@@ -1,4 +1,4 @@
-// basefs implements a google drive fuse driver
+//Package basefs implements a base filesystem caching entries
 package basefs
 
 import (

@@ -89,6 +89,7 @@ func (c *Core) Init() (err error) {
 	return
 }
 
+//Mount performs the mount
 func (c *Core) Mount() {
 
 	// Start Selected driveFS

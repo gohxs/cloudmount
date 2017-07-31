@@ -2,7 +2,7 @@ package core
 
 import "github.com/jacobsa/fuse/fuseutil"
 
-// Base Driver
+// DriverFS default interface for fs driver
 type DriverFS interface {
 	fuseutil.FileSystem
 	//Init()
@@ -10,4 +10,5 @@ type DriverFS interface {
 	//Refresh()
 }
 
+//DriverFactory function type for a FS factory
 type DriverFactory func(*Core) DriverFS

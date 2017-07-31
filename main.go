@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	//Name app name
 	Name = "cloudmount"
 	log  = prettylog.New(Name)
 )
