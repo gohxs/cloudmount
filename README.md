@@ -153,7 +153,7 @@ HUP    | Perform a GC and shows memory usage <small>Works when its not running i
  * https://github.com/jacobsa/fuse -- fuse implementation (did some minor changes to support ARM)
  * https://github.com/dropbox/dropbox-sdk-go-unofficial -- dropbox  client (did some minor changes to fix an issue regarding non authorized urls)
  * https://github.com/t3rm1n4l/go-mega -- mega.co.nz
- * https://google.golang.org/api.drive/v3 -- google drive
+ * https://google.golang.org/api/drive/v3 -- google drive
  * https://github.com/gohxs/boiler -- code templating
 
 
