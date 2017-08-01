@@ -13,6 +13,7 @@ import (
 
 	"github.com/gohxs/cloudmount/internal/fs/dropboxfs"
 	"github.com/gohxs/cloudmount/internal/fs/gdrivefs"
+	"github.com/gohxs/cloudmount/internal/fs/megafs"
 	"github.com/gohxs/prettylog"
 
 	"os/exec"
@@ -44,6 +45,7 @@ func main() {
 	// More will be added later
 	c.Drivers["gdrive"] = gdrivefs.New
 	c.Drivers["dropbox"] = dropboxfs.New
+	c.Drivers["mega"] = megafs.New
 
 	if err := parseFlags(&c.Config); err != nil {
 		log.Fatalln(err)

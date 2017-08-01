@@ -10,6 +10,7 @@ Linux util to Mount cloud drives
 - [Cloud services](#cloud-services)
   - [Google drive](#google-drive)
   - [Dropbox](#dropbox)
+  - [Mega](#mega)
 - [Signals](#signals)
 
 <a name="installation"></a>
@@ -62,6 +63,7 @@ Configuration files/source can be written in following formats:
 #### Cloud services
 * Google Drive
 * Dropbox
+* Mega
 
 --------------
 
@@ -122,6 +124,20 @@ $ cloudmount -t dropbox savedfile.yaml /mnt/point
 ```
 
 On the first run a link will appear and it will request a token resulting from the link
+<a name="mega"></a>
+### Mega
+
+For mega just create the yaml file with the following structure:
+```yaml
+type: mega
+credentials: 
+  email: *your mega account email*
+  password: *your mega account password*
+```
+
+```bash
+$ cloudmount -t mega config.yaml /mnt/point
+```
 
 --------------------
 
@@ -131,6 +147,14 @@ Signal | Action                                                                 
 USR1   | Refreshes directory tree from file system                                                            | killall -USR1 cloudmount
 HUP    | Perform a GC and shows memory usage <small>Works when its not running in daemon mode</small>         | killall -HUP cloudmount
 
+
+
+#### Packages:
+ * https://github.com/jacobsa/fuse -- fuse implementation (did some minor changes to support ARM)
+ * https://github.com/dropbox/dropbox-sdk-go-unofficial -- dropbox  client (did some minor changes to fix an issue regarding non authorized urls)
+ * https://github.com/t3rm1n4l/go-mega -- mega.co.nz
+ * https://google.golang.org/api.drive/v3 -- google drive
+ * https://github.com/gohxs/boiler -- code templating
 
 
 #### TODO & IDEAS:

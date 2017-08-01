@@ -80,6 +80,7 @@ func (fs *BaseFS) Start() {
 	// Fill root container and do changes
 	go func() {
 		fs.Refresh()
+		log.Println("Files loaded:", len(fs.Root.FileEntries))
 		for {
 			fs.CheckForChanges()
 			time.Sleep(fs.Config.RefreshTime)
@@ -93,14 +94,24 @@ func (fs *BaseFS) Refresh() {
 	files, err := fs.Service.ListAll()
 	if err != nil { // Repeat refresh maybe?
 	}
-
-	log.Println("Files loaded:", len(files))
 	root := NewFileContainer(fs)
+	// Two passes first the ones with existing entries next the non existent
+	for i := 0; i < len(files); i++ {
+		file := files[i]
+		oldEntry := fs.Root.FindByID(file.ID)
+		if oldEntry == nil {
+			continue // not found skip 'i' will increase here
+		}
+		root.FileEntry(file, oldEntry.Inode)      // Try to find in previous root
+		files = append(files[:i], files[i+1:]...) // Remove item (is this range safe?)
+		i--                                       // rollback one
+
+	}
+	// Rest of the files (new files)
 	for _, file := range files {
 		root.FileEntry(file) // Try to find in previous root
 	}
-	log.Println("Files processed")
-	fs.Root = root
+	fs.Root = root // Swap root
 }
 
 // CheckForChanges polling
@@ -118,7 +129,10 @@ func (fs *BaseFS) CheckForChanges() {
 			continue
 		}
 		if entry != nil {
-			entry.SetFile(c.File, fs.Config.Options.UID, fs.Config.Options.GID)
+			//Remove old entry?
+			fs.Root.RemoveEntry(entry)
+			fs.Root.FileEntry(c.File, entry.Inode) // Add Entry with same inode and new File?
+			//entry.SetFile(c.File, fs.Config.Options.UID, fs.Config.Options.GID)
 			//entry.SetFile(c.File)
 		} else {
 			//Create new one

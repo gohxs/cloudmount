@@ -14,7 +14,7 @@ import (
 func parseFlags(config *core.Config) (err error) {
 	var mountoptsFlag string
 
-	flag.StringVar(&config.Type, "t", config.Type, "which cloud service to use [gdrive]")
+	flag.StringVar(&config.Type, "t", config.Type, "which cloud service to use [gdrive,dropbox]")
 	flag.BoolVar(&config.Daemonize, "d", false, "Run app in background")
 	flag.BoolVar(&config.VerboseLog, "v", false, "Verbose log")
 	flag.BoolVar(&config.Verbose2Log, "vv", false, "Extra Verbose log")

@@ -55,18 +55,15 @@ func (fc *FileContainer) FindByInode(inode fuseops.InodeID) *FileEntry {
 
 //FindByID retrives by ID
 func (fc *FileContainer) FindByID(id string) *FileEntry {
-	log.Println("Searching for :", id)
 	for _, v := range fc.FileEntries {
 		if v.File == nil && id == "" {
 			log.Println("Found cause file is nil and id '' inode:", v.Inode)
 			return v
 		}
 		if v.File != nil && v.File.ID == id {
-			log.Println("Found by id")
 			return v
 		}
 	}
-	log.Println("Not found")
 	return nil
 }
 
