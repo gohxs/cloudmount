@@ -123,9 +123,17 @@ func (s *Service) Create(parent *basefs.File, name string, isDir bool) (*basefs.
 func (s *Service) Upload(reader io.Reader, file *basefs.File) (*basefs.File, error) {
 
 	// Find parent, should have only one parent in mega
-	parentEntry := s.basefs.Root.FindByID(file.Parents[0])
-	megaPath := parentEntry.File.Data.(*MegaPath)
-	megaParent := megaPath.Node
+	var megaParent *mega.Node
+	parentID := ""
+	if len(file.Parents) == 0 {
+		megaParent = s.megaCli.FS.GetRoot()
+	} else {
+		parentEntry := s.basefs.Root.FindByID(file.Parents[0])
+		megaPath := parentEntry.File.Data.(*MegaPath)
+		parentID = megaPath.Path
+		megaParent = megaPath.Node
+
+	}
 
 	//Special case
 	upFile := reader.(*basefs.FileWrapper)
@@ -137,7 +145,7 @@ func (s *Service) Upload(reader io.Reader, file *basefs.File) (*basefs.File, err
 	}
 
 	<-progress
-	return File(&MegaPath{Path: megaPath.Path + "/" + newNode.GetName(), Node: newNode}), nil
+	return File(&MegaPath{Path: parentID + "/" + newNode.GetName(), Node: newNode}), nil
 }
 
 //DownloadTo from gdrive to a writer
