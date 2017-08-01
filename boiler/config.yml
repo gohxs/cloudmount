@@ -1,0 +1,10 @@
+description:
+vars: []
+generators:
+  fs:
+    files:
+      - {source: fs/config.go.boiler, target: "{{.projRoot}}/internal/fs/{{.name}}fs/config.go" }
+      - {source: fs/genfs.go.boiler, target: "{{.projRoot}}/internal/fs/{{.name}}fs/{{.name}}fs.go" }
+      - {source: fs/service.go.boiler, target: "{{.projRoot}}/internal/fs/{{.name}}fs/service.go" }
+
+  

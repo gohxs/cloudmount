@@ -1,0 +1,7 @@
+package {{.name}}fs
+
+//Config  {{.name}}.yaml config file structure
+type Config struct {
+	// Fs service specific configuration here
+}
+

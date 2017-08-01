@@ -1,0 +1,112 @@
+package {{.name}}fs
+
+import (
+	"io"
+
+
+	"github.com/gohxs/cloudmount/internal/core"
+	"github.com/gohxs/cloudmount/internal/coreutil"
+	"github.com/gohxs/cloudmount/internal/fs/basefs"
+
+)
+
+var ()
+
+
+//Service gdrive service information
+type Service struct {
+	// raw client to access service
+
+}
+
+//NewService creates and initializes a new GDrive service
+func NewService(coreConfig *core.Config) *Service {
+
+	serviceConfig := Config{}
+	log.Println("Initializing gdrive service")
+	log.Println("Source config:", coreConfig.Source)
+
+	err := coreutil.ParseConfig(coreConfig.Source, &serviceConfig)
+	if err != nil {
+		errlog.Fatalf("Unable to read <source>: %v", err)
+	}
+	// Initialize cloud service here
+	
+
+	return nil
+	//return &Service{...}
+
+}
+
+//Changes populate a list with changes to be handled on basefs
+func (s *Service) Changes() ([]*basefs.Change, error) { // Return a list of New file entries
+
+	return nil, basefs.ErrNotImplemented
+}
+
+//ListAll lists all files recursively to cache locally
+func (s *Service) ListAll() ([]*basefs.File, error) {
+
+	return nil, basefs.ErrNotImplemented
+
+}
+
+//Create create an entry in google drive
+func (s *Service) Create(parent *basefs.File, name string, isDir bool) (*basefs.File, error) {
+	// implement CreateFile on service here and return a File struct
+	return nil, basefs.ErrNotImplemented
+}
+
+//Upload a file
+func (s *Service) Upload(reader io.Reader, file *basefs.File) (*basefs.File, error) {
+	// Implement Upload so files can sync
+	return nil, basefs.ErrNotImplemented
+}
+
+//DownloadTo from gdrive to a writer
+func (s *Service) DownloadTo(w io.Writer, file *basefs.File) error {
+	// Download file from service
+	return basefs.ErrNotImplemented
+}
+
+//Move a file in drive
+func (s *Service) Move(file *basefs.File, newParent *basefs.File, name string) (*basefs.File, error) {
+	// Move file (usually cloud services have the function move)
+	return nil, basefs.ErrNotImplemented
+}
+
+//Delete file from drive
+func (s *Service) Delete(file *basefs.File) error {
+	// Delete file in service
+	return basefs.ErrNotImplemented
+}
+
+//File converts a google drive File structure to baseFS
+/* from drivefs
+func File( service file here ) *basefs.File {
+	if gfile == nil {
+		return nil
+	}
+
+	createdTime, _ := time.Parse(time.RFC3339, gfile.CreatedTime)
+	modifiedTime, _ := time.Parse(time.RFC3339, gfile.ModifiedTime)
+
+	mode := os.FileMode(0644)
+	if gfile.MimeType == "application/vnd.google-apps.folder" {
+		mode = os.FileMode(0755) | os.ModeDir
+	}
+
+	file := &basefs.File{
+		ID:           gfile.Id,
+		Name:         gfile.Name,
+		Size:         uint64(gfile.Size),
+		CreatedTime:  createdTime,
+		ModifiedTime: modifiedTime,
+		AccessedTime: modifiedTime,
+		Mode:         mode,
+
+		Parents: gfile.Parents,
+		Data:    gfile, // Extra gfile
+	}
+	return file
+}*/
