@@ -14,12 +14,11 @@ import (
 
 //Service gdrive service information
 type Service struct {
-	// raw client to access service
 	megaCli *mega.Mega
 	basefs  *basefs.BaseFS
 }
 
-//NewService creates and initializes a new GDrive service
+//NewService creates and initializes a new Mega service
 func NewService(coreConfig *core.Config, basefs *basefs.BaseFS) *Service {
 
 	serviceConfig := Config{}
@@ -39,9 +38,10 @@ func NewService(coreConfig *core.Config, basefs *basefs.BaseFS) *Service {
 }
 
 //Changes populate a list with changes to be handled on basefs
-func (s *Service) Changes() ([]*basefs.Change, error) { // Return a list of New file entries
+// Returns a list of changes
+func (s *Service) Changes() ([]*basefs.Change, error) {
 
-	// It seems that the base lib caches entries and refreshes necessary, it should be fast to refresh all ?
+	// It seems that the mega package caches entries and refreshes necessary by its own, it should be fast to refresh all
 	s.basefs.Refresh()
 	return nil, nil
 }
@@ -52,7 +52,7 @@ func (s *Service) ListAll() ([]*basefs.File, error) {
 
 	rootNode := s.megaCli.FS.GetRoot()
 
-	var addAll func(*mega.Node, string)
+	var addAll func(*mega.Node, string) // Closure that basically appends entries to local ret
 	addAll = func(n *mega.Node, pathstr string) {
 		children, err := s.megaCli.FS.GetChildren(n)
 		if err != nil {
@@ -76,9 +76,6 @@ func (s *Service) ListAll() ([]*basefs.File, error) {
 
 //Create create an entry in google drive
 func (s *Service) Create(parent *basefs.File, name string, isDir bool) (*basefs.File, error) {
-	log.Println("Creating ", name, "IsDir:", isDir)
-	// implement CreateFile on service here and return a File struct
-
 	parentID := ""
 	var megaParent *mega.Node
 	if parent == nil {
@@ -97,15 +94,13 @@ func (s *Service) Create(parent *basefs.File, name string, isDir bool) (*basefs.
 
 		return File(&MegaPath{Path: newName, Node: newNode}), nil
 	}
-	// Create the file
-	/* srcpath */
 
 	// Create tempFile, since mega package does not accept a reader
 	f, err := ioutil.TempFile(os.TempDir(), "megafs")
 	if err != nil {
 		return nil, err
 	}
-	f.Close()
+	f.Close() // we don't need the descriptor, only the name
 
 	progress := make(chan int, 1)
 	// Upload empty file
@@ -132,10 +127,9 @@ func (s *Service) Upload(reader io.Reader, file *basefs.File) (*basefs.File, err
 		megaPath := parentEntry.File.Data.(*MegaPath)
 		parentID = megaPath.Path
 		megaParent = megaPath.Node
-
 	}
 
-	//Special case
+	//Special case, package does not provide UploadFile from a reader
 	upFile := reader.(*basefs.FileWrapper)
 
 	progress := make(chan int, 1)
@@ -143,14 +137,15 @@ func (s *Service) Upload(reader io.Reader, file *basefs.File) (*basefs.File, err
 	if err != nil {
 		return nil, err
 	}
-
 	<-progress
+
 	return File(&MegaPath{Path: parentID + "/" + newNode.GetName(), Node: newNode}), nil
 }
 
 //DownloadTo from gdrive to a writer
 func (s *Service) DownloadTo(w io.Writer, file *basefs.File) error {
 
+	// Same as upload, mega package does not provide a downloadFile to io.Writer
 	downFile := w.(*basefs.FileWrapper)
 
 	progress := make(chan int, 1)
@@ -159,10 +154,8 @@ func (s *Service) DownloadTo(w io.Writer, file *basefs.File) error {
 		return err
 	}
 	<-progress
-	for range progress {
-	}
-	return nil
 
+	return nil
 }
 
 //Move a file in drive
@@ -190,23 +183,18 @@ func (s *Service) Move(file *basefs.File, newParent *basefs.File, name string) (
 	return File(&MegaPath{Path: newParentID + "/" + name, Node: file.Data.(*MegaPath).Node}), nil
 }
 
-//Delete file from drive
+//Delete file from service
 func (s *Service) Delete(file *basefs.File) error {
-	err := s.megaCli.Delete(file.Data.(*MegaPath).Node, false)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return s.megaCli.Delete(file.Data.(*MegaPath).Node, false)
 }
 
-// MegaPath files does not contain parents so we extract parents from Path
+// MegaPath go-mega does not contain parent entries so we extract parents from Path
 type MegaPath struct {
 	Path string
 	Node *mega.Node
 }
 
-//File converts a google drive File structure to baseFS
+//File converts a mega drive Node structure to baseFS
 func File(mfile *MegaPath) *basefs.File {
 	if mfile == nil {
 		return nil
@@ -237,7 +225,7 @@ func File(mfile *MegaPath) *basefs.File {
 		Mode:         mode,
 
 		Parents: parents, // ?
-		Data:    mfile,   // store original file
+		Data:    mfile,   // store original data struct
 	}
 	return file
 }

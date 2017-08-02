@@ -362,7 +362,7 @@ func (fs *BaseFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err
 	if parentFile == nil {
 		return fuse.ENOENT
 	}
-	// Only write on child folders allow write in parent
+	// Only write on child folders
 	/*if parentFile == fs.Root.FileEntries[fuseops.RootInodeID] {
 		return syscall.EPERM
 	}*/
