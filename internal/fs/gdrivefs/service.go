@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	fileFields = googleapi.Field("id, name, size,mimeType, parents,createdTime,modifiedTime")
+	fileFields = googleapi.Field("id, name,size,mimeType,parents,createdTime,modifiedTime,trashed")
 	gdFields   = googleapi.Field("files(" + fileFields + ")")
 )
 
@@ -86,7 +86,11 @@ func (s *Service) Changes() ([]*basefs.Change, error) { // Return a list of New 
 		}
 		//log.Println("Changes:", len(changesRes.Changes))
 		for _, c := range changesRes.Changes {
-			change := &basefs.Change{ID: c.FileId, File: File(c.File), Remove: c.Removed}
+			remove := c.Removed
+			if c.File.Trashed { // Might not be removed but instead trashed
+				remove = true
+			}
+			change := &basefs.Change{ID: c.FileId, File: File(c.File), Remove: remove}
 			ret = append(ret, change) // Convert to our changes
 		}
 		if changesRes.NewStartPageToken != "" {
@@ -146,6 +150,9 @@ func (s *Service) ListAll() ([]*basefs.File, error) {
 	// Create clean fileList
 	var appendFile func(gfile *drive.File)
 	appendFile = func(gfile *drive.File) {
+		if gfile.Trashed {
+			return
+		}
 		for _, pID := range gfile.Parents {
 			parentFile, ok := fileMap[pID]
 			if !ok {
