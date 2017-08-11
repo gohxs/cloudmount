@@ -25,6 +25,7 @@ const (
 //Service gdrive service information
 type Service struct {
 	client              *drive.Service
+	serviceConfig       Config
 	savedStartPageToken string
 }
 
@@ -61,7 +62,7 @@ func NewService(coreConfig *core.Config) *Service {
 		errlog.Fatalf("Unable to retrieve drive Client: %v", err)
 	}
 
-	return &Service{client: driveCli}
+	return &Service{client: driveCli, serviceConfig: serviceConfig}
 
 }
 
@@ -216,7 +217,15 @@ func (s *Service) DownloadTo(w io.Writer, file *basefs.File) error {
 	// Export GDocs (Special google doc documents needs to be exported make a config somewhere for this)
 	switch gfile.MimeType { // Make this somewhat optional special case
 	case "application/vnd.google-apps.document":
-		res, err = s.client.Files.Export(gfile.Id, "text/plain").Download()
+		log.Println("Mimes", s.serviceConfig.Mime)
+		targetMime := s.serviceConfig.Mime[gfile.MimeType]
+		log.Println("Mime before default is:", targetMime)
+		if targetMime == "" {
+			targetMime = "text/plain"
+		}
+		log.Println("Exporting doc as:", targetMime)
+
+		res, err = s.client.Files.Export(gfile.Id, targetMime).Download()
 	case "application/vnd.google-apps.spreadsheet":
 		res, err = s.client.Files.Export(gfile.Id, "text/csv").Download()
 	default:
