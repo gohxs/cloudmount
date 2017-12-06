@@ -8,7 +8,7 @@ import (
 
 // Config struct
 type Config struct {
-	Daemonize   bool
+	Foreground  bool
 	Type        string
 	VerboseLog  bool
 	Verbose2Log bool

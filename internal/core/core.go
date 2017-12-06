@@ -54,7 +54,7 @@ func New() *Core {
 	return &Core{
 		Drivers: map[string]DriverFactory{},
 		Config: Config{
-			Daemonize:   false,
+			Foreground:  false,
 			Type:        "",
 			VerboseLog:  false,
 			RefreshTime: 5 * time.Second,
