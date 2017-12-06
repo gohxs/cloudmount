@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/gohxs/cloudmount/internal/core"
@@ -22,7 +23,6 @@ import (
 var (
 	//Name app name
 	Name = "cloudmount"
-	log  = prettylog.New(Name)
 )
 
 func main() {
