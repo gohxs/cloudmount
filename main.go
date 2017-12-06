@@ -62,9 +62,9 @@ func main() {
 	// Daemon
 	/////////////////
 	if !c.Config.Foreground {
-		subArgs := []string{}
+		subArgs := []string{"-f"}
 		for _, arg := range os.Args[1:] {
-			if arg == "-d" { // ignore daemon flag
+			if arg == "-f" { // ignore daemon flag, already added
 				continue
 			}
 			subArgs = append(subArgs, arg)
