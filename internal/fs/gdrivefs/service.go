@@ -87,7 +87,7 @@ func (s *Service) Changes() ([]*basefs.Change, error) { // Return a list of New 
 		//log.Println("Changes:", len(changesRes.Changes))
 		for _, c := range changesRes.Changes {
 			remove := c.Removed
-			if c.File.Trashed { // Might not be removed but instead trashed
+			if c.File != nil && c.File.Trashed { // Might not be removed but instead trashed
 				remove = true
 			}
 			change := &basefs.Change{ID: c.FileId, File: File(c.File), Remove: remove}
