@@ -1,4 +1,4 @@
-cloudmountt
+cloudmount
 =====================
 Linux util to Mount cloud drives
 
