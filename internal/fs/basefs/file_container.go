@@ -14,7 +14,7 @@ import (
 
 //FileContainer will hold file entries
 type FileContainer struct {
-	FileEntries map[fuseops.InodeID]*FileEntry
+	fileEntries map[fuseops.InodeID]*FileEntry
 	///	tree        *FileEntry
 	fs *BaseFS
 	//client *drive.Service // Wrong should be common
@@ -28,7 +28,7 @@ type FileContainer struct {
 func NewFileContainer(fs *BaseFS) *FileContainer {
 
 	fc := &FileContainer{
-		FileEntries: map[fuseops.InodeID]*FileEntry{},
+		fileEntries: map[fuseops.InodeID]*FileEntry{},
 		fs:          fs,
 		//client:  fs.Client,
 		inodeMU: &sync.Mutex{},
@@ -45,17 +45,26 @@ func NewFileContainer(fs *BaseFS) *FileContainer {
 
 //Count the total number of fileentries
 func (fc *FileContainer) Count() int {
-	return len(fc.FileEntries)
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+
+	return len(fc.fileEntries)
 }
 
 //FindByInode retrieves a file entry by inode
 func (fc *FileContainer) FindByInode(inode fuseops.InodeID) *FileEntry {
-	return fc.FileEntries[inode]
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+
+	return fc.fileEntries[inode]
 }
 
 //FindByID retrives by ID
 func (fc *FileContainer) FindByID(id string) *FileEntry {
-	for _, v := range fc.FileEntries {
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+
+	for _, v := range fc.fileEntries {
 		if v.File == nil && id == "" {
 			log.Println("Found cause file is nil and id '' inode:", v.Inode)
 			return v
@@ -69,7 +78,10 @@ func (fc *FileContainer) FindByID(id string) *FileEntry {
 
 //Lookup retrives a FileEntry from a parent(folder) with name
 func (fc *FileContainer) Lookup(parent *FileEntry, name string) *FileEntry {
-	for _, entry := range fc.FileEntries {
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+
+	for _, entry := range fc.fileEntries {
 		if entry.HasParent(parent) && entry.Name == name {
 			return entry
 		}
@@ -79,8 +91,11 @@ func (fc *FileContainer) Lookup(parent *FileEntry, name string) *FileEntry {
 
 //ListByParent entries from parent
 func (fc *FileContainer) ListByParent(parent *FileEntry) []*FileEntry {
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+
 	ret := []*FileEntry{}
-	for _, entry := range fc.FileEntries {
+	for _, entry := range fc.fileEntries {
 		if entry.HasParent(parent) {
 			ret = append(ret, entry)
 		}
@@ -96,18 +111,21 @@ func (fc *FileContainer) CreateFile(parentFile *FileEntry, name string, isDir bo
 	if err != nil {
 		return nil, err
 	}
-	entry := fc.FileEntry(createdFile) // New Entry added // Or Return same?
+	entry := fc.FileEntry(createdFile) // New Entry added // locks
 
 	return entry, nil
 }
 
 //DeleteFile tell service to delete a file
 func (fc *FileContainer) DeleteFile(entry *FileEntry) error {
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+
 	err := fc.fs.Service.Delete(entry.File)
 	if err != nil {
 		return err
 	}
-	fc.RemoveEntry(entry)
+	fc.removeEntry(entry)
 	return nil
 }
 
@@ -115,20 +133,19 @@ func (fc *FileContainer) DeleteFile(entry *FileEntry) error {
 
 //FileEntry Create or Update a FileEntry by inode, inode is an optional argument
 func (fc *FileContainer) FileEntry(file *File, inodeOps ...fuseops.InodeID) *FileEntry {
-
 	fc.inodeMU.Lock()
 	defer fc.inodeMU.Unlock()
 
 	var inode fuseops.InodeID
 	if len(inodeOps) > 0 {
 		inode = inodeOps[0]
-		if fe, ok := fc.FileEntries[inode]; ok {
+		if fe, ok := fc.fileEntries[inode]; ok {
 			return fe
 		}
 	} else { // generate new inode
 		// Max Inode Number
 		for inode = 2; inode < math.MaxUint64; inode++ {
-			_, ok := fc.FileEntries[inode]
+			_, ok := fc.fileEntries[inode]
 			if !ok {
 				break
 			}
@@ -147,7 +164,7 @@ func (fc *FileContainer) FileEntry(file *File, inodeOps ...fuseops.InodeID) *Fil
 			var entry *FileEntry
 			// Only Place requireing a GID
 			for _, p := range file.Parents {
-				entry = fc.LookupByID(p, name)
+				entry = fc.lookupByID(p, name)
 				if entry != nil {
 					break
 				}
@@ -181,25 +198,24 @@ func (fc *FileContainer) FileEntry(file *File, inodeOps ...fuseops.InodeID) *Fil
 		fe.SetFile(file, fc.uid, fc.gid)
 		//fe.SetFile(file)
 	}
-	fc.FileEntries[inode] = fe
+	fc.fileEntries[inode] = fe
 
 	return fe
 }
 
 //SetEntry Adds an entry to file container based on inode
 func (fc *FileContainer) SetEntry(inode fuseops.InodeID, entry *FileEntry) {
-	fc.FileEntries[inode] = entry
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+
+	fc.fileEntries[inode] = entry
 }
 
 // RemoveEntry remove file entry
 func (fc *FileContainer) RemoveEntry(entry *FileEntry) {
-	var inode fuseops.InodeID
-	for k, e := range fc.FileEntries {
-		if e == entry {
-			inode = k
-		}
-	}
-	delete(fc.FileEntries, inode)
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+	fc.removeEntry(entry)
 }
 
 //Sync will flush, upload file and update local entry
@@ -270,10 +286,29 @@ func (fc *FileContainer) Truncate(fe *FileEntry) (err error) { // DriverTruncate
 
 // LookupByID lookup by remote ID
 func (fc *FileContainer) LookupByID(parentID string, name string) *FileEntry {
-	for _, entry := range fc.FileEntries {
+	fc.inodeMU.Lock()
+	defer fc.inodeMU.Unlock()
+	return fc.lookupByID(parentID, name)
+}
+
+// non lock lookupByID
+func (fc *FileContainer) lookupByID(parentID string, name string) *FileEntry {
+	for _, entry := range fc.fileEntries {
 		if entry.HasParentID(parentID) && entry.Name == name {
 			return entry
 		}
 	}
 	return nil
+
+}
+
+func (fc *FileContainer) removeEntry(entry *FileEntry) {
+
+	var inode fuseops.InodeID
+	for k, e := range fc.fileEntries {
+		if e == entry {
+			inode = k
+		}
+	}
+	delete(fc.fileEntries, inode)
 }

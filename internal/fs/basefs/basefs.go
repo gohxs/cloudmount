@@ -80,7 +80,7 @@ func (fs *BaseFS) Start() {
 	// Fill root container and do changes
 	go func() {
 		fs.Refresh()
-		log.Println("Files loaded:", len(fs.Root.FileEntries))
+		log.Println("Files loaded:", len(fs.Root.fileEntries))
 		for {
 			fs.CheckForChanges()
 			time.Sleep(fs.Config.RefreshTime)
