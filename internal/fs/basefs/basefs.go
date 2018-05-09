@@ -557,8 +557,10 @@ func (fs *BaseFS) Rename(ctx context.Context, op *fuseops.RenameOp) (err error) 
 		return fuse.ENOENT
 	}
 
-	//oldFile := oldParentFile.FindByName(op.OldName, false)
 	oldEntry := fs.Root.Lookup(oldParentEntry, op.OldName)
+	if oldEntry == nil {
+		return fuse.ENOENT
+	}
 
 	// Although GDrive allows duplicate names, there is some issue with inode caching
 	// So we prevent a rename to a file with same name
@@ -573,7 +575,8 @@ func (fs *BaseFS) Rename(ctx context.Context, op *fuseops.RenameOp) (err error) 
 		return fuseErr(err)
 	}
 
-	// Why remove and add instead of setting file, is just in case we have an existing name FileEntry solves the name adding duplicates helpers
+	// Why remove and add instead of setting file, is just in case we have an
+	// existing name FileEntry solves the name adding duplicates helpers
 	fs.Root.RemoveEntry(oldEntry)
 	fs.Root.FileEntry(nFile, oldEntry.Inode) // Use this same inode
 
