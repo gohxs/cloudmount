@@ -47,7 +47,7 @@ type BaseFS struct {
 
 	Config      *core.Config //core   *core.Core // Core Config instead?
 	Root        *FileContainer
-	fileHandles map[fuseops.HandleID]*handle
+	fileHandles sync.Map
 	handleMU    *sync.Mutex
 	Service     Service
 }
@@ -60,7 +60,7 @@ func New(core *core.Core) *BaseFS {
 
 	fs := &BaseFS{
 		Config:      &core.Config,
-		fileHandles: map[fuseops.HandleID]*handle{},
+		fileHandles: sync.Map{},
 		handleMU:    &sync.Mutex{},
 	}
 
@@ -147,20 +147,21 @@ func (fs *BaseFS) CheckForChanges() {
 
 // COMMON
 func (fs *BaseFS) createHandle() *handle {
-	// Lock here instead
+
+	// Assure we get a unique ID
 	fs.handleMU.Lock()
 	defer fs.handleMU.Unlock()
 
 	var handleID fuseops.HandleID
 	for handleID = 1; handleID < math.MaxUint64; handleID++ {
-		_, ok := fs.fileHandles[handleID]
+		_, ok := fs.fileHandles.Load(handleID)
 		if !ok {
 			break
 		}
 	}
 
 	h := &handle{ID: handleID}
-	fs.fileHandles[handleID] = h
+	fs.fileHandles.Store(handleID, h)
 
 	return h
 }
@@ -182,9 +183,9 @@ func (fs *BaseFS) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (err error
 		return fuse.ENOENT
 	}
 
-	handle := fs.createHandle()
-	handle.entry = entry
-	op.Handle = handle.ID
+	fh := fs.createHandle()
+	fh.entry = entry
+	op.Handle = fh.ID
 
 	return // No error allow, dir open
 }
@@ -192,10 +193,12 @@ func (fs *BaseFS) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (err error
 // ReadDir lists files into readdirop
 // Common for drivers
 func (fs *BaseFS) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err error) {
-	fh, ok := fs.fileHandles[op.Handle]
+
+	fhi, ok := fs.fileHandles.Load(op.Handle)
 	if !ok {
-		errlog.Fatal("Handle does not exists")
+		return fuse.EIO
 	}
+	fh := fhi.(*handle)
 
 	if op.Offset == 0 { // Rebuild/rewind dir list
 
@@ -270,7 +273,7 @@ func (fs *BaseFS) GetInodeAttributes(ctx context.Context, op *fuseops.GetInodeAt
 // ReleaseDirHandle deletes file handle entry
 // COMMON
 func (fs *BaseFS) ReleaseDirHandle(ctx context.Context, op *fuseops.ReleaseDirHandleOp) (err error) {
-	delete(fs.fileHandles, op.Handle)
+	fs.fileHandles.Delete(op.Handle)
 	return
 }
 
@@ -323,15 +326,15 @@ func (fs *BaseFS) GetXAttr(ctx context.Context, op *fuseops.GetXattrOp) (err err
 //////////////////////////////////////////////////////////////////////////
 
 // OpenFile creates a temporary handle to be handled on read or write
-// COMMON
+// XXX: Check what to do if the tempfile exists locally
 func (fs *BaseFS) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) (err error) {
 	f := fs.Root.FindByInode(op.Inode) // might not exists
 
 	// Generate new handle
-	handle := fs.createHandle()
-	handle.entry = f
+	fh := fs.createHandle()
+	fh.entry = f
 
-	op.Handle = handle.ID
+	op.Handle = fh.ID
 	op.UseDirectIO = true
 
 	return
@@ -340,9 +343,13 @@ func (fs *BaseFS) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) (err err
 // ReadFile  if the first time we download the google drive file into a local temporary file
 // COMMON but specific in cache
 func (fs *BaseFS) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) (err error) {
-	handle := fs.fileHandles[op.Handle]
+	fhi, ok := fs.fileHandles.Load(op.Handle)
+	if !ok {
+		return fuse.EIO
+	}
+	fh := fhi.(*handle)
 
-	localFile := fs.Root.Cache(handle.entry)
+	localFile := fs.Root.Cache(fh.entry)
 	op.BytesRead, err = localFile.ReadAt(op.Dst, op.Offset)
 	if err == io.EOF { // fuse does not expect a EOF
 		err = nil
@@ -354,21 +361,14 @@ func (fs *BaseFS) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) (err err
 // CreateFile creates empty file in google Drive and returns its ID and attributes, only allows file creation on 'My Drive'
 // Cloud SPECIFIC
 func (fs *BaseFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err error) {
-	/*if fs.Config.Options.Readonly {
-		return syscall.EPERM
-	}*/
 
 	parentFile := fs.Root.FindByInode(op.Parent)
 	if parentFile == nil {
 		return fuse.ENOENT
 	}
 	// Only write on child folders
-	/*if parentFile == fs.Root.FileEntries[fuseops.RootInodeID] {
-		return syscall.EPERM
-	}*/
 
 	existsFile := fs.Root.Lookup(parentFile, op.Name)
-	//existsFile := parentFile.FindByName(op.Name, false)
 	if existsFile != nil {
 		return fuse.EEXIST
 	}
@@ -381,11 +381,11 @@ func (fs *BaseFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err
 	// Associate a temp file to a new handle
 	// Local copy
 	// Lock
-	handle := fs.createHandle()
-	handle.entry = entry
-	handle.uploadOnDone = true
+	fh := fs.createHandle()
+	fh.entry = entry
+	fh.uploadOnDone = true
 	//
-	op.Handle = handle.ID
+	op.Handle = fh.ID
 	op.Entry = fuseops.ChildInodeEntry{
 		Attributes:           entry.Attr,
 		Child:                entry.Inode,
@@ -401,16 +401,14 @@ func (fs *BaseFS) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) (err
 // Maybe the ReadFile should be called here aswell to cache current contents since we are using writeAt
 // CLOUD SPECIFIC
 func (fs *BaseFS) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err error) {
-	/*if fs.Config.Options.Readonly {
-		return syscall.EPERM
-	}*/
 
-	handle, ok := fs.fileHandles[op.Handle]
+	fhi, ok := fs.fileHandles.Load(op.Handle)
 	if !ok {
 		return fuse.EIO
 	}
+	fh := fhi.(*handle)
 
-	localFile := fs.Root.Cache(handle.entry)
+	localFile := fs.Root.Cache(fh.entry)
 	if localFile == nil {
 		return fuse.EINVAL
 	}
@@ -419,7 +417,7 @@ func (fs *BaseFS) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err e
 		err = fuse.EIO
 		return
 	}
-	handle.uploadOnDone = true
+	fh.uploadOnDone = true
 
 	return
 }
@@ -427,19 +425,17 @@ func (fs *BaseFS) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err e
 // FlushFile just returns no error, maybe upload should be handled here
 // COMMON
 func (fs *BaseFS) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) (err error) {
-	/*if fs.Config.Options.Readonly {
-		return syscall.EPERM
-	}*/
-
-	handle, ok := fs.fileHandles[op.Handle]
+	fhi, ok := fs.fileHandles.Load(op.Handle)
 	if !ok {
 		return fuse.EIO
 	}
-	if handle.entry.tempFile == nil {
+	fh := fhi.(*handle)
+
+	if fh.entry.tempFile == nil {
 		return
 	}
-	if handle.uploadOnDone { // or if content changed basically
-		err = fs.Root.Sync(handle.entry)
+	if fh.uploadOnDone { // or if content changed basically
+		err = fs.Root.Sync(fh.entry)
 		if err != nil {
 			return fuseErr(err)
 		}
@@ -450,11 +446,15 @@ func (fs *BaseFS) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) (err e
 // ReleaseFileHandle closes and deletes any temporary files, upload in case if changed locally
 // COMMON
 func (fs *BaseFS) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFileHandleOp) (err error) {
-	handle := fs.fileHandles[op.Handle]
+	fhi, ok := fs.fileHandles.Load(op.Handle)
+	if !ok {
+		return nil
+	}
+	fh := fhi.(*handle)
 
-	fs.Root.ClearCache(handle.entry)
+	fs.Root.ClearCache(fh.entry)
 
-	delete(fs.fileHandles, op.Handle)
+	fs.fileHandles.Delete(op.Handle)
 
 	return
 }
@@ -462,20 +462,13 @@ func (fs *BaseFS) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFile
 // Unlink remove file and remove from local cache entry
 // SPECIFIC
 func (fs *BaseFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error) {
-	/*if fs.Config.Options.Readonly {
-		return syscall.EPERM
-	}
 
-	/*if op.Parent == fuseops.RootInodeID {
-		return syscall.EPERM
-	}*/
 	parentEntry := fs.Root.FindByInode(op.Parent)
 	if parentEntry == nil {
 		return fuse.ENOENT
 	}
 
 	fileEntry := fs.Root.Lookup(parentEntry, op.Name)
-	//fileEntry := parentEntry.FindByName(op.Name, false)
 	if fileEntry == nil {
 		return fuse.ENOATTR
 	}
@@ -486,13 +479,6 @@ func (fs *BaseFS) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err error) 
 
 // MkDir creates a directory on a parent dir
 func (fs *BaseFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) {
-	/*if fs.Config.Options.Readonly {
-		return syscall.EPERM
-	}*/
-
-	/*if op.Parent == fuseops.RootInodeID {
-		return syscall.EPERM
-	}*/
 
 	parentFile := fs.Root.FindByInode(op.Parent)
 	if parentFile == nil {
@@ -516,13 +502,6 @@ func (fs *BaseFS) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err error) {
 
 // RmDir fuse implementation
 func (fs *BaseFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) {
-	/*if fs.Config.Options.Readonly {
-		return syscall.EPERM
-	}*/
-
-	/*if op.Parent == fuseops.RootInodeID {
-		return syscall.EPERM
-	}*/
 
 	parentFile := fs.Root.FindByInode(op.Parent)
 	if parentFile == nil {
@@ -541,13 +520,6 @@ func (fs *BaseFS) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err error) {
 
 // Rename fuse implementation
 func (fs *BaseFS) Rename(ctx context.Context, op *fuseops.RenameOp) (err error) {
-	/*if fs.Config.Options.Readonly {
-		return syscall.EPERM
-	}*/
-
-	/*if op.OldParent == fuseops.RootInodeID || op.NewParent == fuseops.RootInodeID {
-		return syscall.EPERM
-	}*/
 	oldParentEntry := fs.Root.FindByInode(op.OldParent)
 	if oldParentEntry == nil {
 		return fuse.ENOENT

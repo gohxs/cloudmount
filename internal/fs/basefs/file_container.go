@@ -231,7 +231,6 @@ func (fc *FileContainer) Sync(fe *FileEntry) (err error) {
 		return err
 	}
 	fe.SetFile(upFile, fc.uid, fc.gid) // update local GFile entry
-	//fe.SetFile(upFile) // update local GFile entry
 	return
 
 }
@@ -279,7 +278,6 @@ func (fc *FileContainer) Truncate(fe *FileEntry) (err error) { // DriverTruncate
 		return err
 	}
 	fe.tempFile = &FileWrapper{localFile}
-	//fc.Sync(fe) // Basically upload empty file??
 
 	return
 }
