@@ -2,8 +2,6 @@ package basefs
 
 import (
 	"fmt"
-	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"strings"
@@ -216,70 +214,6 @@ func (fc *FileContainer) RemoveEntry(entry *FileEntry) {
 	fc.inodeMU.Lock()
 	defer fc.inodeMU.Unlock()
 	fc.removeEntry(entry)
-}
-
-//Sync will flush, upload file and update local entry
-func (fc *FileContainer) Sync(fe *FileEntry) (err error) {
-	if fe.tempFile == nil {
-		return
-	}
-	fe.tempFile.Sync()
-	fe.tempFile.Seek(0, io.SeekStart) // Depends??, for reading?
-
-	upFile, err := fc.fs.Service.Upload(fe.tempFile, fe.File)
-	if err != nil {
-		return err
-	}
-	fe.SetFile(upFile, fc.uid, fc.gid) // update local GFile entry
-	return
-
-}
-
-//ClearCache remove local file
-func (fc *FileContainer) ClearCache(fe *FileEntry) (err error) {
-	if fe.tempFile == nil {
-		return
-	}
-	fe.tempFile.RealClose()
-	os.Remove(fe.tempFile.Name())
-	fe.tempFile = nil
-	return
-}
-
-//Cache download GDrive file to a temporary local file or return already created file
-func (fc *FileContainer) Cache(fe *FileEntry) *FileWrapper {
-	if fe.tempFile != nil {
-		return fe.tempFile
-	}
-	var err error
-
-	// Local copy
-	localFile, err := ioutil.TempFile(os.TempDir(), "gdfs") // TODO: const this elsewhere
-	if err != nil {
-		return nil
-	}
-	fe.tempFile = &FileWrapper{localFile}
-
-	err = fc.fs.Service.DownloadTo(fe.tempFile, fe.File)
-	// ignore download since can be a bogus file, for certain file systems
-	//if err != nil { // Ignore this error
-	//    return nil
-	//}
-	fe.tempFile.Seek(0, io.SeekStart)
-	return fe.tempFile
-
-}
-
-// Truncate truncates localFile to 0 bytes
-func (fc *FileContainer) Truncate(fe *FileEntry) (err error) { // DriverTruncate
-	// Delete and create another on truncate 0
-	localFile, err := ioutil.TempFile(os.TempDir(), "gdfs") // TODO: const this elsewhere
-	if err != nil {
-		return err
-	}
-	fe.tempFile = &FileWrapper{localFile}
-
-	return
 }
 
 // LookupByID lookup by remote ID

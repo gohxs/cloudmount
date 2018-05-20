@@ -250,7 +250,7 @@ func (fs *BaseFS) SetInodeAttributes(ctx context.Context, op *fuseops.SetInodeAt
 		if *op.Size != 0 { // We only allow truncate to 0
 			return fuse.ENOSYS
 		}
-		err = fs.Root.Truncate(entry)
+		err = entry.Truncate()
 	}
 
 	return
@@ -349,7 +349,7 @@ func (fs *BaseFS) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) (err err
 	}
 	fh := fhi.(*handle)
 
-	localFile := fs.Root.Cache(fh.entry)
+	localFile := fh.entry.Cache(fs.Root)
 	op.BytesRead, err = localFile.ReadAt(op.Dst, op.Offset)
 	if err == io.EOF { // fuse does not expect a EOF
 		err = nil
@@ -408,7 +408,7 @@ func (fs *BaseFS) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err e
 	}
 	fh := fhi.(*handle)
 
-	localFile := fs.Root.Cache(fh.entry)
+	localFile := fh.entry.Cache(fs.Root)
 	if localFile == nil {
 		return fuse.EINVAL
 	}
@@ -435,7 +435,7 @@ func (fs *BaseFS) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) (err e
 		return
 	}
 	if fh.uploadOnDone { // or if content changed basically
-		err = fs.Root.Sync(fh.entry)
+		err = fh.entry.Sync(fs.Root)
 		if err != nil {
 			return fuseErr(err)
 		}
@@ -452,7 +452,7 @@ func (fs *BaseFS) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFile
 	}
 	fh := fhi.(*handle)
 
-	fs.Root.ClearCache(fh.entry)
+	fh.entry.ClearCache()
 
 	fs.fileHandles.Delete(op.Handle)
 

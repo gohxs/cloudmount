@@ -1,13 +1,17 @@
 package basefs
 
 import (
+	"io"
+	"io/ioutil"
 	"os"
+	"sync"
 
 	"github.com/jacobsa/fuse/fuseops"
 )
 
 //FileEntry entry to handle files
 type FileEntry struct {
+	sync.Mutex
 	Inode    fuseops.InodeID         // Inode
 	File     *File                   // Remote file information
 	Name     string                  // local name
@@ -68,4 +72,82 @@ func (fe *FileEntry) HasParent(parent *FileEntry) bool {
 		return fe.HasParentID("")
 	}
 	return fe.HasParentID(parent.File.ID)
+}
+
+//ClearCache remove local file
+// XXX: move this to FileEntry
+func (fe *FileEntry) ClearCache() (err error) {
+	fe.Lock()
+	defer fe.Unlock()
+	if fe.tempFile == nil {
+		return
+	}
+	fe.tempFile.RealClose()
+	os.Remove(fe.tempFile.Name())
+	fe.tempFile = nil
+	return
+}
+
+// Truncate truncates localFile to 0 bytes
+func (fe *FileEntry) Truncate() (err error) {
+	fe.Lock()
+	defer fe.Unlock()
+	// Delete and create another on truncate 0
+	localFile, err := ioutil.TempFile(os.TempDir(), "gdfs") // TODO: const this elsewhere
+	if err != nil {
+		return err
+	}
+	fe.tempFile = &FileWrapper{localFile}
+
+	return
+}
+
+//Sync will flush, upload file and update local entry
+func (fe *FileEntry) Sync(fc *FileContainer) (err error) {
+	fe.Lock()
+	defer fe.Unlock()
+
+	if fe.tempFile == nil {
+		return
+	}
+	fe.tempFile.Sync()
+	fe.tempFile.Seek(0, io.SeekStart) // Depends??, for reading?
+
+	upFile, err := fc.fs.Service.Upload(fe.tempFile, fe.File)
+	if err != nil {
+		return err
+	}
+	fe.SetFile(upFile, fc.uid, fc.gid) // update local GFile entry
+	return
+
+}
+
+//Cache download cloud file to a temporary local file or return already created file
+func (fe *FileEntry) Cache(fc *FileContainer) *FileWrapper {
+	fe.Lock()
+	defer fe.Unlock()
+
+	if fe.tempFile != nil {
+		return fe.tempFile
+	}
+	var err error
+
+	// Local copy
+	localFile, err := ioutil.TempFile(os.TempDir(), "gdfs") // TODO: const this elsewhere
+	if err != nil {
+		return nil
+	}
+	fe.tempFile = &FileWrapper{localFile}
+
+	err = fc.fs.Service.DownloadTo(fe.tempFile, fe.File)
+	// ignore download since can be a bogus file, for certain file systems
+	//if err != nil { // Ignore this error
+	//    return nil
+	//}
+
+	// tempFile could change to null in the meantime (download might take long?)
+	fe.tempFile.Seek(0, io.SeekStart)
+
+	return fe.tempFile
+
 }
