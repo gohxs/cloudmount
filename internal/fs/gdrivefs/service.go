@@ -290,12 +290,8 @@ func (s *Service) StatFS(op *fuseops.StatFSOp) error {
 	abtCall.Fields(googleapi.Field("storageQuota"))
 	abt, err := abtCall.Do()
 	if err != nil {
-		log.Println("About err:", err)
 		return err
 	}
-	log.Printf("abt.StorageQuota %db", abt.StorageQuota.Usage)
-	log.Printf("abt.StorageQuota %dK", abt.StorageQuota.Usage/1024)
-	log.Printf("abt.StorageQuota %dM", abt.StorageQuota.Usage/1024/1024)
 	op.BlockSize = 1
 	op.Blocks = uint64(abt.StorageQuota.Limit)
 	op.BlocksAvailable = op.Blocks - uint64(abt.StorageQuota.Usage)

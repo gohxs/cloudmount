@@ -269,7 +269,6 @@ func (s *Service) StatFS(sfs *fuseops.StatFSOp) error {
 	sfs.Blocks = spaceUsage.Allocation.Individual.Allocated
 	sfs.BlocksFree = sfs.Blocks - spaceUsage.Used
 	sfs.BlocksAvailable = sfs.Blocks - spaceUsage.Used
-	sfs.IoSize = 1
 	return nil
 }
 
