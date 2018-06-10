@@ -1,6 +1,10 @@
 package basefs
 
-import "io"
+import (
+	"io"
+
+	"github.com/jacobsa/fuse/fuseops"
+)
 
 // Service interface
 type Service interface {
@@ -12,4 +16,6 @@ type Service interface {
 	DownloadTo(w io.Writer, file *File) error
 	Move(file *File, newParent *File, name string) (*File, error)
 	Delete(file *File) error
+	//-- implementing
+	StatFS(*fuseops.StatFSOp) error
 }

@@ -9,6 +9,8 @@ import (
 	"github.com/gohxs/cloudmount/internal/core"
 	"github.com/gohxs/cloudmount/internal/coreutil"
 	"github.com/gohxs/cloudmount/internal/fs/basefs"
+	"github.com/jacobsa/fuse"
+	"github.com/jacobsa/fuse/fuseops"
 	mega "github.com/t3rm1n4l/go-mega"
 )
 
@@ -186,6 +188,10 @@ func (s *Service) Move(file *basefs.File, newParent *basefs.File, name string) (
 //Delete file from service
 func (s *Service) Delete(file *basefs.File) error {
 	return s.megaCli.Delete(file.Data.(*MegaPath).Node, false)
+}
+
+func (s *Service) StatFS(*fuseops.StatFSOp) error {
+	return fuse.ENOSYS
 }
 
 // MegaPath go-mega does not contain parent entries so we extract parents from Path

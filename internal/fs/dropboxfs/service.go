@@ -11,10 +11,12 @@ import (
 
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox"
 	dbfiles "github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/files"
+	dbusers "github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/users"
 	"github.com/gohxs/cloudmount/internal/core"
 	"github.com/gohxs/cloudmount/internal/coreutil"
 	"github.com/gohxs/cloudmount/internal/fs/basefs"
 	"github.com/gohxs/cloudmount/internal/oauth2util"
+	"github.com/jacobsa/fuse/fuseops"
 )
 
 // Service basefs Service implementation
@@ -22,6 +24,9 @@ type Service struct {
 	dbconfig    dropbox.Config
 	savedCursor string
 }
+
+// Assure implementation
+var _ basefs.Service = &Service{}
 
 //NewService creates Dropbox service
 func NewService(coreConfig *core.Config) *Service {
@@ -248,6 +253,23 @@ func (s *Service) Delete(file *basefs.File) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+// StatFS loads space usage from service into fuseops struct
+// {lpf} -- 10/06/2018
+func (s *Service) StatFS(sfs *fuseops.StatFSOp) error {
+	userService := dbusers.New(s.dbconfig)
+
+	spaceUsage, err := userService.GetSpaceUsage()
+	if err != nil {
+		return err
+	}
+	sfs.BlockSize = 1
+	sfs.Blocks = spaceUsage.Allocation.Individual.Allocated
+	sfs.BlocksFree = sfs.Blocks - spaceUsage.Used
+	sfs.BlocksAvailable = sfs.Blocks - spaceUsage.Used
+	sfs.IoSize = 1
 	return nil
 }
 

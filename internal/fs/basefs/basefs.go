@@ -174,6 +174,25 @@ const gdFields = googleapi.Field("files(" + fileFields + ")")
 // Fuse operations
 ////////////
 
+// StatFS this is used by DF  -- TESTING
+func (fs *BaseFS) StatFS(ctx context.Context, op *fuseops.StatFSOp) (err error) {
+	err = fs.Service.StatFS(op)
+	if err != nil {
+		return err
+	}
+	op.Inodes = uint64(len(fs.Root.fileEntries))
+	op.InodesFree = math.MaxUint64 - op.Inodes
+	log.Println("Free inodes:", op.InodesFree)
+	//op.BlockSize = 48
+	//op.BlocksAvailable = 2
+	//op.Blocks = 2
+	//op.Inodes = uint64(len(fs.Root.fileEntries))
+	//op.InodesFree = 2
+	//op.IoSize = 1024
+	//
+	return nil
+}
+
 // OpenDir return nil error allows open dir
 // COMMON for drivers
 func (fs *BaseFS) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (err error) {
